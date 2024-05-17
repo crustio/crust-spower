@@ -53,6 +53,14 @@ async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
           type: DataTypes.INTEGER,
           allowNull: false,
         },
+        reporter: {
+          type: DataTypes.STRING,
+          allowNull: false,
+        },
+        owner: {
+          type: DataTypes.STRING,
+          allowNull: false,
+        },
         reported_srd_size: {
           type: DataTypes.BIGINT,
           allowNull: false,

@@ -261,15 +261,18 @@ export default class CrustApi {
     await this.withApiReady();
     try {
       // Get all the entries from the latest block
-      const wrsToProcess = await this.api.query.swork.workReportsToProcess.entries();
-      logger.info(`Work Reports to process: ${wrsToProcess.length}`);
+      const wrsToProcessChain = await this.api.query.swork.workReportsToProcess.entries();
+      logger.info(`Work Reports to process: ${wrsToProcessChain.length}`);
 
       let workReportsToProcess = [];
-      // workReportsToProcess is defined in the chain as double map (sworkerAnchor, reportSlot) => (blockNumber, extrinsicIndex) 
-      for (const [{args: [sworkerAnchor, reportSlot]}, value] of wrsToProcess){
-          const blockNumber = value[0];
-          const exIdx = value[1];
-          logger.debug(`${sworkerAnchor}: ${reportSlot} - blockNumber: ${blockNumber}, exIdx: ${exIdx}`);
+      // workReportsToProcess is defined in the chain as double map (sworkerAnchor, reportSlot) => (blockNumber, extrinsicIndex, reporter,) 
+      for (const [{args: [sworkerAnchor, reportSlot]}, value] of wrsToProcessChain){
+          let workReportMetadata = value as any;
+          const blockNumber = workReportMetadata.block_number;
+          const exIdx = workReportMetadata.extrinsic_index;
+          const reporter = workReportMetadata.reporter;
+          const owner = workReportMetadata.owner;
+          logger.debug(`${sworkerAnchor}: ${reportSlot} - {blockNumber: ${blockNumber}, exIdx: ${exIdx}, reporter: ${reporter}, owner: ${owner}`);
 
           const blockHash = await this.api.rpc.chain.getBlockHash(blockNumber);
           const blockForWorkReport = await this.api.rpc.chain.getBlock(blockHash);
@@ -291,6 +294,8 @@ export default class CrustApi {
                       report_slot: reportSlot,
                       block_number: blockNumber,
                       extrinsic_index: exIdx,
+                      reporter: reporter,
+                      owner: owner,
                       reported_srd_size: reported_srd_size ? reported_srd_size : 0,
                       reported_files_size: reported_files_size ? reported_files_size : 0,
                       added_files: added_files ? added_files : [],

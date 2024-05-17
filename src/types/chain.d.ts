@@ -5,6 +5,8 @@ export interface WorkReportsToProcess {
   report_slot: number;
   block_number: number;
   extrinsic_index: number;
+  reporter: string;
+  owner: string;
   reported_srd_size: bigint;
   reported_files_size: bigint;
   added_files: string;

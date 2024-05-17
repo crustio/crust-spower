@@ -14,15 +14,17 @@ export function createWorkReportsToProcessOperator(db: Database): WorkReportsToP
         // sworker_anchor + report_slot should be unique, compose unique index is defined, so use 'insert or ignore into' here
         const result = await db.run(
           'insert or ignore into work_reports_to_process ' +
-            '(`sworker_anchor`, `report_slot`, `block_number`, `extrinsic_index`, ' +
+            '(`sworker_anchor`, `report_slot`, `block_number`, `extrinsic_index`, `reporter`, `owner`, ' +
             '`reported_srd_size`, `reported_files_size`, `added_files`, `deleted_files`, ' +
             '`status`, `last_updated`, `create_at`)' +
-            ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             wr.sworker_anchor,
             wr.report_slot,
             wr.block_number,
             wr.extrinsic_index,
+            wr.reporter,
+            wr.owner,
             wr.reported_srd_size,
             wr.reported_files_size,
             wr.added_files,
