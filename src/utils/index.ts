@@ -20,12 +20,26 @@ export function parseObj<T>(o: unknown): T {
 }
 
 /**
+ * Convert chain query result to object
+ * @param queryRes chain query result
+ * @returns 
+ */
+export function queryToObj(queryRes: any) {
+  return JSON.parse(JSON.stringify(queryRes));
+}
+
+
+/**
  * Convert from hex to string
  * @param hex Hex string with prefix `0x`
  * @returns With string back
  */
 export function hexToString(hex: string): string {
   return Buffer.from(hex.substring(2), 'hex').toString();
+}
+
+export function stringToHex(str: string): string {
+  return '0x' + Buffer.from(str).toString('hex');
 }
 
 /**

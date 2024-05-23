@@ -25,12 +25,12 @@ export interface LatestBlockTime {
   time: number;
 }
 
-/// WorkReportsProcess table
+/// work_reports_to_process table
 type WorkReportsProcessStatus = 'new' | 'processed' | 'failed' | 'done';
 
 export interface WorkReportsToProcessRecord extends WorkReportsToProcess {
   id: number;
-  status: FileStatus;
+  status: WorkReportsProcessStatus;
   last_updated: number;
   create_at: number;
 }
@@ -38,5 +38,24 @@ export interface WorkReportsToProcessRecord extends WorkReportsToProcess {
 export interface WorkReportsToProcessOperator {
   addWorkReports: (workReports: WorkReportsToProcess[]) => Promise<number>;
   getPendingWorkReports: (count: number) => Promise<WorkReportsToProcessRecord[]>;
-  updateWorkReportRecordStatus: (id: number, status: WorkReportsProcessStatus) => DbWriteResult;
+  updateWorkReportRecordsStatus: (ids: number[], status: WorkReportsProcessStatus) => DbWriteResult;
+}
+
+
+/// file_replicas_to_update table
+type FileReplicasToUpdateStatus = 'new' | 'updated' | 'failed' | 'done';
+export interface FileReplicasToUpdateRecord {
+  id: number;
+  cid: string;
+  file_size: bigint;
+  replicas: string;
+  status: FileReplicasToUpdateStatus;
+  last_updated: number;
+  create_at: number;
+}
+
+export interface FileReplicasToUpdateOperator {
+  addFileReplicasAndUpdateWorkReports: (filesInfoMap: Map<string, FileInfo>, workReportIds: number[]) => DbWriteResult;
+  getPendingFileInfos: (count: number) => Promise<FileReplicasToUpdateRecord[]>;
+  updateFileReplicasRecordsStatus: (ids: number[], status: FileReplicasToUpdateStatus) => DbWriteResult;
 }

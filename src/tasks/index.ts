@@ -4,6 +4,7 @@ import { SimpleTask } from '../types/tasks';
 import { createChildLogger } from '../utils/logger';
 import { createWorkReportsIndexer } from './work-reports-indexer-task';
 import { createWorkReportsProcessor } from './work-reports-processor-task';
+import { createFileReplicasUpdater } from './file-replicas-updater-task';
 
 /**
  * create simpile tasks which only handle start/stop
@@ -14,7 +15,8 @@ export async function createSimpleTasks(
   const logger = createChildLogger({ moduleId: 'simple-tasks' });
   const tasks = [
     createWorkReportsIndexer,
-    createWorkReportsProcessor
+    createWorkReportsProcessor,
+    createFileReplicasUpdater,
   ];
   return Bluebird.mapSeries(tasks, (t) => {
     return t(context, logger);

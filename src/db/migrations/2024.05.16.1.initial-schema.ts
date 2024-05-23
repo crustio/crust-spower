@@ -18,6 +18,7 @@ export const up: MigrationFn<QueryInterface> = async ({
   });
 
   await createWorkReportsToProcessTable(sequelize);
+  await createFileReplicasToUpdateTable(sequelize);
 };
 
 export const down: MigrationFn<QueryInterface> = async ({
@@ -45,7 +46,7 @@ async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
           type: DataTypes.INTEGER,
           allowNull: false,
         },
-        block_number: {
+        report_block: {
           type: DataTypes.INTEGER,
           allowNull: false,
         },
@@ -102,13 +103,68 @@ async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
     await sequelize.addIndex('work_reports_to_process', ['report_slot'], {
       transaction,
     });
-    await sequelize.addIndex('work_reports_to_process', ['status','block_number'], {
+    await sequelize.addIndex('work_reports_to_process', ['status','report_block'], {
       transaction,
     });
     await sequelize.addIndex('work_reports_to_process', ['last_updated'], {
       transaction,
     });
     await sequelize.addIndex('work_reports_to_process', ['create_at'], {
+      transaction,
+    });
+  });
+}
+
+async function createFileReplicasToUpdateTable(sequelize: QueryInterface) {
+  await withTransaction(sequelize, async (transaction) => {
+    await sequelize.createTable(
+      'file_replicas_to_update',
+      {
+        id: {
+          type: DataTypes.INTEGER,
+          allowNull: false,
+          primaryKey: true,
+        },
+        cid: {
+          type: DataTypes.STRING,
+          allowNull: false,
+        },
+        file_size: {
+          type: DataTypes.BIGINT,
+          allowNull: false,
+        },
+        replicas: {
+          type: DataTypes.STRING,
+          allowNull: false,
+        },
+        status: {
+          type: DataTypes.STRING,
+          allowNull: false,
+        },
+        last_updated: {
+          type: DataTypes.INTEGER,
+          allowNull: false,
+        },
+        create_at: {
+          type: DataTypes.INTEGER,
+          allowNull: false,
+        },
+      },
+      {
+        transaction,
+      },
+    );
+
+    await sequelize.addIndex('file_replicas_to_update', ['cid'], {
+      transaction,
+    });
+    await sequelize.addIndex('file_replicas_to_update', ['status','create_at'], {
+      transaction,
+    });
+    await sequelize.addIndex('file_replicas_to_update', ['last_updated'], {
+      transaction,
+    });
+    await sequelize.addIndex('file_replicas_to_update', ['create_at'], {
       transaction,
     });
   });

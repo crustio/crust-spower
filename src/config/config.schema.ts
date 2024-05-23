@@ -5,6 +5,8 @@ import { createChildLogger } from '../utils/logger';
 const chainConfigSchema = Joi.object().keys({
   account: Joi.string().required(),
   endPoint: Joi.string().required(),
+  backup: Joi.string().required(),
+  password: Joi.string().required(),
 });
 
 const telemetryConfigSchema = Joi.object().keys({

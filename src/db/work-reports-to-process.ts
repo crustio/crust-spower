@@ -14,14 +14,14 @@ export function createWorkReportsToProcessOperator(db: Database): WorkReportsToP
         // sworker_anchor + report_slot should be unique, compose unique index is defined, so use 'insert or ignore into' here
         const result = await db.run(
           'insert or ignore into work_reports_to_process ' +
-            '(`sworker_anchor`, `report_slot`, `block_number`, `extrinsic_index`, `reporter`, `owner`, ' +
+            '(`sworker_anchor`, `report_slot`, `report_block`, `extrinsic_index`, `reporter`, `owner`, ' +
             '`reported_srd_size`, `reported_files_size`, `added_files`, `deleted_files`, ' +
             '`status`, `last_updated`, `create_at`)' +
             ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             wr.sworker_anchor,
             wr.report_slot,
-            wr.block_number,
+            wr.report_block,
             wr.extrinsic_index,
             wr.reporter,
             wr.owner,
@@ -44,27 +44,31 @@ export function createWorkReportsToProcessOperator(db: Database): WorkReportsToP
   const getPendingWorkReports = async (
     count: number,
   ): Promise<WorkReportsToProcessRecord[]> => {
-    return db.all(
-      `select id, sworker_anchor, report_slot, block_number, extrinsic_index, 
+    return await db.all(
+      `select id, sworker_anchor, report_slot, report_block, extrinsic_index, reporter, owner,
               reported_srd_size, reported_files_size, added_files, deleted_files, status 
-       from work_reports_to_process where status in ('new', 'failed') order by block_number asc limit ${count}`
+       from work_reports_to_process where status in ('new', 'failed') order by report_block asc limit ${count}`
     );
   };
 
-  const updateWorkReportRecordStatus = async (
-    id: number,
+  const updateWorkReportRecordsStatus = async (
+    ids: number[],
     status: WorkReportsProcessStatus,
   ) => {
-    await db.run(
-      'update work_reports_to_process set status = ?, last_updated = ? where id = ?',
-      [status, getTimestamp(), id],
-    );
+    if (ids && ids.length > 0) {
+      const ids_str = ids.join(',');
+      await db.run(
+        `update work_reports_to_process set status = ?, last_updated = ? where id in (${ids_str})`,
+        [status, getTimestamp()],
+      );
+    }
+    
   };
 
   
   return {
     addWorkReports,
     getPendingWorkReports,
-    updateWorkReportRecordStatus
+    updateWorkReportRecordsStatus
   };
 }

@@ -1,40 +1,48 @@
-import { ApiPromise, WsProvider } from '@polkadot/api';
-import {
-  BlockHash,
-  Header,
-  SignedBlock,
-} from '@polkadot/types/interfaces';
-import { formatError, parseObj, sleep } from '../utils';
+import { ApiPromise, Keyring, WsProvider } from '@polkadot/api';
+import { BlockHash, Header, SignedBlock, DispatchError } from '@polkadot/types/interfaces';
+import { KeyringPair } from '@polkadot/keyring/types';
+import { formatError, parseObj, queryToObj, sleep } from '../utils';
 import { typesBundleForPolkadot, crustTypes } from '@crustio/type-definitions';
 import _ from 'lodash';
 import { SLOT_LENGTH } from '../utils/consts';
 import { logger } from '../utils/logger';
 import { UnsubscribePromise, VoidFn } from '@polkadot/api/types';
+import { SubmittableExtrinsic } from '@polkadot/api/promise/types';
 import Bluebird from 'bluebird';
-import { WorkReportsToProcess } from '../types/chain';
+import { ReplicaInfo, TxRes, WorkReportsToProcess } from '../types/chain';
+import { FileReplicasToUpdateRecord } from '../types/database';
+import { timeout } from '../utils/promise-utils';
+import { ITuple } from '@polkadot/types/types';
 
-export interface FileInfo {
-  cid: string;
-  size: number;
-  tips: number;
-  expiredAt: number | null;
-  replicas: number | null;
-  owner: string | null;
-}
 
-export type MarketFileInfo = typeof crustTypes.market.types.FileInfoV2;
 export type Identity = typeof crustTypes.swork.types.Identity;
+
+// TODO: Move the definition to crust.js lib
+const customTypes = {
+  WorkReportMetadata: {
+    report_block: 'BlockNumber',
+    extrinsic_index: 'u32',
+    reporter: 'AccountId',
+    owner: 'AccountId'
+  }
+}
 
 export default class CrustApi {
   private readonly addr: string;
   private api!: ApiPromise;
   private readonly chainAccount: string;
+  private readonly krp: KeyringPair;
   private latestBlock = 0;
   private subLatestHead: VoidFn = null;
+  private txLocker = {market: false, swork: false};
 
-  constructor(addr: string, chainAccount: string) {
+  constructor(addr: string, chainAccount: string, backup: string, password: string) {
     this.addr = addr;
     this.chainAccount = chainAccount;
+
+    const kr = new Keyring({ type: 'sr25519' });
+    this.krp = kr.addFromJson(JSON.parse(backup));
+    this.krp.decodePkcs8(password);
   }
 
   async initApi(): Promise<void> {
@@ -47,6 +55,7 @@ export default class CrustApi {
 
     this.api = new ApiPromise({
       provider: new WsProvider(this.addr),
+      types: customTypes,
       typesBundle: typesBundleForPolkadot,
     });
 
@@ -158,6 +167,17 @@ export default class CrustApi {
     return res;
   }
 
+  async waitForNextBlock(): Promise<void> {
+    const h_before = await this.header();
+
+    do {
+      await sleep(3000);
+      const h_after = await this.header();
+      if (h_after.number.toNumber()> h_before.number.toNumber()) {
+        return;
+      }
+    } while(true);
+  }
   /**
    * Get best block's header
    * @returns header
@@ -249,9 +269,8 @@ export default class CrustApi {
   }
 
   /**
-   * Trying to get new files/closed files by parsing block event
-   * @param bh block hash
-   * @returns Vec<FileInfo>
+   * Trying to get work reports to process from the latest block
+   * @returns Vec<WorkReportsToProcess>
    * @throws ApiPromise error or type conversing error
    */
   async getWorkReportsToProcess(): Promise<WorkReportsToProcess[]> {
@@ -268,13 +287,13 @@ export default class CrustApi {
       // workReportsToProcess is defined in the chain as double map (sworkerAnchor, reportSlot) => (blockNumber, extrinsicIndex, reporter,) 
       for (const [{args: [sworkerAnchor, reportSlot]}, value] of wrsToProcessChain){
           let workReportMetadata = value as any;
-          const blockNumber = workReportMetadata.block_number;
+          const report_block = workReportMetadata.report_block;
           const exIdx = workReportMetadata.extrinsic_index;
           const reporter = workReportMetadata.reporter;
           const owner = workReportMetadata.owner;
-          logger.debug(`${sworkerAnchor}: ${reportSlot} - {blockNumber: ${blockNumber}, exIdx: ${exIdx}, reporter: ${reporter}, owner: ${owner}`);
+          // logger.debug(`${sworkerAnchor}: ${reportSlot} - {blockNumber: ${blockNumber}, exIdx: ${exIdx}, reporter: ${reporter}, owner: ${owner}`);
 
-          const blockHash = await this.api.rpc.chain.getBlockHash(blockNumber);
+          const blockHash = await this.api.rpc.chain.getBlockHash(report_block);
           const blockForWorkReport = await this.api.rpc.chain.getBlock(blockHash);
 
           let exFound = false;
@@ -283,19 +302,19 @@ export default class CrustApi {
                   exFound = true;
 
                   // Check the sworker::report_works extrinsic call arguments structure
-                  const { method: { args, method, section } } = extrinsic;
+                  const { method: { args } } = extrinsic;
                   const reported_srd_size = args[4];
                   const reported_files_size = args[5];
                   const added_files = args[6];
                   const deleted_files = args[7];
 
                   let workReport = {
-                      sworker_anchor: sworkerAnchor,
+                      sworker_anchor: sworkerAnchor.toString(),
                       report_slot: reportSlot,
-                      block_number: blockNumber,
+                      report_block: report_block,
                       extrinsic_index: exIdx,
-                      reporter: reporter,
-                      owner: owner,
+                      reporter: reporter.toString(),
+                      owner: owner.toString(),
                       reported_srd_size: reported_srd_size ? reported_srd_size : 0,
                       reported_files_size: reported_files_size ? reported_files_size : 0,
                       added_files: added_files ? added_files : [],
@@ -303,12 +322,12 @@ export default class CrustApi {
                   };
 
                   workReportsToProcess.push(workReport);
-                  logger.debug(`workReport: ${JSON.stringify({section: section, method: method, args: {...workReport}})}`);
+                  // logger.debug(`workReport: ${JSON.stringify({section: section, method: method, args: {...workReport}})}`);
               }
           });
 
           if (!exFound) {
-            logger.error(`💥 Extrinsic data not found for blockNumber: ${blockNumber}, exIdx: ${exIdx}. The connected chain node may not be an archive node!!!`);
+            logger.error(`💥 Extrinsic data not found for blockNumber: ${report_block}, exIdx: ${exIdx}. The connected chain node may not be an archive node!!!`);
           }
       }
 
@@ -322,23 +341,123 @@ export default class CrustApi {
     }
   }
 
-  /**
-   * Get file info from chain by cid
-   * @param cid Ipfs file cid
-   * @returns Option<MarketFileInfo>
-   * @throws ApiPromise error or type conversing error
-   */
-  async maybeGetFileUsedInfo(cid: string): Promise<MarketFileInfo | null> {
+  async updateReplicas(filesInfoMap: Map<string, FileReplicasToUpdateRecord>): Promise<boolean> {
+
+    if (filesInfoMap === null || filesInfoMap.size === 0) {
+      return false;
+    }
+
+    let startTime = performance.now();
+    logger.info(`Start to update replicas data to chain`);
+
     await this.withApiReady();
+    try {
+      // Construct the transaction body data
+      let txBody = [];
+      filesInfoMap.forEach((fileInfo, cid) => {
+        const entry = [cid, fileInfo.file_size, fileInfo.replicas];
+        txBody.push(entry);
+      });
+      logger.debug(`txBody: ${JSON.stringify(txBody)}`);
+      // Construct the transaction object
+      const tx = this.api.tx.market.updateReplicas(txBody); 
+
+       let txRes = queryToObj(await this.handleMarketTxWithLock(async () => this.sendTx(tx)));
+       txRes = txRes ? txRes : {status:'failed', details: 'Null txRes'};
+       if (txRes.status == 'success') {
+         logger.info(`Update relicas data to chain successfully`);
+         return true;
+       }
+       else {
+         logger.error(`Failled to update replicas data to chain: ${txRes.details}`);
+         return false;
+       }
+    } catch (err) {
+      logger.error(`💥 Error to update replicas data to chain: ${err}`);
+    } finally {
+      let endTime = performance.now();
+      logger.info(`End to update replicas data to chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+    }
+
+    return false;
+  }
+
+
+  private async handleMarketTxWithLock(handler: Function) {
+    if (this.txLocker.market) {
+      return {
+        status: 'failed',
+        details: 'Tx Locked',
+      };
+    }
 
     try {
-      // Should be like MarketFileInfo or null
-      const fileUsedInfo = parseObj(await this.api.query.market.filesV2(cid));
-      return fileUsedInfo ? fileUsedInfo as MarketFileInfo: null;
-    } catch (e) {
-      logger.error(`💥 Get file/used info error: ${e}`);
-      return null;
+      this.txLocker.market = true;
+      return await timeout(
+        new Promise((resolve, reject) => {
+          handler().then(resolve).catch(reject);
+        }),
+        7 * 60 * 1000, // 7 min, for valid till checking
+        null
+      );
+    } finally {
+      this.txLocker.market = false;
     }
+  }
+
+  private async sendTx(tx: SubmittableExtrinsic) {
+    return new Promise((resolve, reject) => {
+      tx.signAndSend(this.krp, ({events = [], status}) => {
+        logger.info(
+          `  ↪ 💸 [tx]: Transaction status: ${status.type}, nonce: ${tx.nonce}`
+        );
+
+        if (status.isInvalid || status.isDropped || status.isUsurped) {
+          reject(new Error(`${status.type} transaction.`));
+        } else {
+          // Pass it
+        }
+
+        if (status.isInBlock) {
+          events.forEach(({event: {data, method, section}}) => {
+            if (section === 'system' && method === 'ExtrinsicFailed') {
+              const [dispatchError] = data as unknown as ITuple<[DispatchError]>;
+              const result: TxRes = {
+                status: 'failed',
+                message: dispatchError.type,
+              };
+              // Can get detail error info
+              if (dispatchError.isModule) {
+                const mod = dispatchError.asModule;
+                const error = this.api.registry.findMetaError(
+                  new Uint8Array([mod.index.toNumber(), mod.error.toNumber()])
+                );
+                result.message = `${error.section}.${error.name}`;
+                result.details = error.documentation.join('');
+              }
+
+              logger.info(
+                `  ↪ 💸 ❌ [tx]: Send transaction(${tx.type}) failed with ${result.message}.`
+              );
+              resolve(result);
+            } else if (method === 'ExtrinsicSuccess') {
+              const result: TxRes = {
+                status: 'success',
+              };
+
+              logger.info(
+                `  ↪ 💸 ✅ [tx]: Send transaction(${tx.type}) success.`
+              );
+              resolve(result);
+            }
+          });
+        } else {
+          // Pass it
+        }
+      }).catch(e => {
+        reject(e);
+      });
+    });
   }
 
   public async ensureConnection(): Promise<void> {

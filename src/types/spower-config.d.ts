@@ -1,6 +1,8 @@
 export interface ChainConfig {
   account: string;
   endPoint: string;
+  backup: string;
+  password: string;
 }
 
 export interface TelemetryConfig {
