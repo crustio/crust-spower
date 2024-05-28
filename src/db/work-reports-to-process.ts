@@ -45,9 +45,8 @@ export function createWorkReportsToProcessOperator(db: Database): WorkReportsToP
     count: number,
   ): Promise<WorkReportsToProcessRecord[]> => {
     return await db.all(
-      `select id, sworker_anchor, report_slot, report_block, extrinsic_index, reporter, owner,
-              reported_srd_size, reported_files_size, added_files, deleted_files, status 
-       from work_reports_to_process where status in ('new', 'failed') order by report_block asc limit ${count}`
+      `select * from work_reports_to_process 
+      where status in ('new', 'failed') order by report_block asc limit ${count}`
     );
   };
 

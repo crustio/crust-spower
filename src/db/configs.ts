@@ -3,6 +3,7 @@ import _ from 'lodash';
 import { Database } from 'sqlite';
 import { ConfigOperator, DbResult, DbWriteResult } from '../types/database';
 import { logger } from '../utils/logger';
+import { getTimestamp } from '../utils';
 
 export function createConfigOps(db: Database): ConfigOperator {
   const readString = async (name: string): DbResult<string> => {
@@ -19,8 +20,8 @@ export function createConfigOps(db: Database): ConfigOperator {
 
   const saveString = async (name: string, v: string): DbWriteResult => {
     await db.run(
-      'insert or replace into config (name, content) values (?, ?)',
-      [name, v],
+      'insert or replace into config (name, content, last_updated) values (?, ?, ?)',
+      [name, v, getTimestamp()],
     );
   };
 

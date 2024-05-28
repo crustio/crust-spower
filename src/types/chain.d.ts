@@ -13,7 +13,7 @@ export interface WorkReportsToProcess {
   deleted_files: string;
 }
 
-export interface ReplicaInfo{
+export interface ReplicaToUpdate{
   reporter: string;
   owner: string;
   sworker_anchor: string;
@@ -23,14 +23,20 @@ export interface ReplicaInfo{
   is_added: boolean;
 }
 
-export interface FileInfo {
+export interface FileToUpdate {
   cid: string;
   file_size: bigint;
-  replicas: ReplicaInfo[];
+  replicas: ReplicaToUpdate[];
 }
 
 export interface TxRes {
   status?: string;
   message?: string;
   details?: string;
+}
+
+export interface UpdatedFileToProcess {
+  cid: string;
+  actual_added_replicas: ReplicaToUpdate[];
+  actual_deleted_replicas: ReplicaToUpdate[];
 }

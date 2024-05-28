@@ -9,13 +9,14 @@ import { logger } from '../utils/logger';
 import { UnsubscribePromise, VoidFn } from '@polkadot/api/types';
 import { SubmittableExtrinsic } from '@polkadot/api/promise/types';
 import Bluebird from 'bluebird';
-import { ReplicaInfo, TxRes, WorkReportsToProcess } from '../types/chain';
-import { FileReplicasToUpdateRecord } from '../types/database';
+import { UpdatedFileToProcess, TxRes, WorkReportsToProcess, FileToUpdate } from '../types/chain';
 import { timeout } from '../utils/promise-utils';
 import { ITuple } from '@polkadot/types/types';
+import { WorkReportsToProcessRecord } from '../types/database';
 
 
 export type Identity = typeof crustTypes.swork.types.Identity;
+export type FileInfoV2 = typeof crustTypes.market.types.FileInfoV2;
 
 // TODO: Move the definition to crust.js lib
 const customTypes = {
@@ -341,7 +342,7 @@ export default class CrustApi {
     }
   }
 
-  async updateReplicas(filesInfoMap: Map<string, FileReplicasToUpdateRecord>): Promise<boolean> {
+  async updateReplicas(filesInfoMap: Map<string, FileToUpdate>, workReports: WorkReportsToProcessRecord[]): Promise<boolean> {
 
     if (filesInfoMap === null || filesInfoMap.size === 0) {
       return false;
@@ -353,25 +354,33 @@ export default class CrustApi {
     await this.withApiReady();
     try {
       // Construct the transaction body data
-      let txBody = [];
+      let fileInfoMapBody = [];
+      let workReportsBody = [];
       filesInfoMap.forEach((fileInfo, cid) => {
         const entry = [cid, fileInfo.file_size, fileInfo.replicas];
-        txBody.push(entry);
+        fileInfoMapBody.push(entry);
       });
-      logger.debug(`txBody: ${JSON.stringify(txBody)}`);
-      // Construct the transaction object
-      const tx = this.api.tx.market.updateReplicas(txBody); 
+      workReports.forEach(wr => {
+        const entry = [wr.sworker_anchor, wr.report_slot];
+        workReportsBody.push(entry);
+      });
+      logger.debug(`fileInfoMapBody: ${JSON.stringify(fileInfoMapBody)}`);
+      logger.debug(`workReportsBody: ${JSON.stringify(workReportsBody)}`);
 
-       let txRes = queryToObj(await this.handleMarketTxWithLock(async () => this.sendTx(tx)));
-       txRes = txRes ? txRes : {status:'failed', details: 'Null txRes'};
-       if (txRes.status == 'success') {
-         logger.info(`Update relicas data to chain successfully`);
-         return true;
-       }
-       else {
-         logger.error(`Failled to update replicas data to chain: ${txRes.details}`);
-         return false;
-       }
+      // Construct the transaction object
+      const tx = this.api.tx.market.updateReplicas(fileInfoMapBody, workReportsBody); 
+
+      // Send the transaction
+      let txRes = queryToObj(await this.handleMarketTxWithLock(async () => this.sendTx(tx)));
+      txRes = txRes ? txRes : {status:'failed', details: 'Null txRes'};
+      if (txRes.status == 'success') {
+        logger.info(`Update relicas data to chain successfully`);
+        return true;
+      }
+      else {
+        logger.error(`Failled to update replicas data to chain: ${txRes.details}`);
+        return false;
+      }
     } catch (err) {
       logger.error(`💥 Error to update replicas data to chain: ${err}`);
     } finally {
@@ -382,6 +391,62 @@ export default class CrustApi {
     return false;
   }
 
+  async getUpdatedFilesToProcess(): Promise<Map<number, UpdatedFileToProcess[]>> {
+
+    let startTime = performance.now();
+    logger.info(`Start to get updated files from chain`);
+    await this.withApiReady();
+    try {
+      // Get all the entries from the latest block
+      const updatedFilesToProcessChain = await this.api.query.market.updatedFilesToProcess.entries();
+      logger.info(`Updated Files to process: ${updatedFilesToProcessChain.length}`);
+
+      let updatedFilesMap = new Map<number, UpdatedFileToProcess[]>();
+      // updatedFilesToProcess is defined in the chain as map (update_block) => Vec<{cid, actual_added_replicas, actual_deleted_replicas}> 
+      for (const [{args: [updateBlock] }, value] of updatedFilesToProcessChain){
+          logger.debug(`updatedFileInfo: ${updateBlock} - ${value}`);
+          let updatedFiles = JSON.parse(value as any) as UpdatedFileToProcess[];
+
+          updatedFilesMap.set(updateBlock as any, updatedFiles);
+      }
+
+      return updatedFilesMap;
+    } catch (err) {
+      logger.error(`💥 Error to get updated files from chain: ${err}`);
+      return null;
+    } finally {
+      let endTime = performance.now();
+      logger.info(`End to get updated files from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+    }
+  }
+
+  async getFilesInfoV2(cids: string[], at_block: number): Promise<Map<string, FileInfoV2>> {
+
+    let startTime = performance.now();
+    logger.info(`Start to get files info v2 from chain`);
+    await this.withApiReady();
+    try {
+      const apiAt = await this.api.at(await this.getBlockHash(at_block));
+
+      /// ----------------------------------------------------
+      /// TODO: Implement a batch query runtime API later and get data in batch instead of one by one for better performance
+      let filesInfoV2 = new Map<string, FileInfoV2>();
+      for (const cid of cids) {
+        const fileInfoV2FromChain = await apiAt.query.market.FilesV2(cid);
+        logger.debug(`fileInfoV2FromChain: ${fileInfoV2FromChain}`);
+
+        filesInfoV2.set(cid, fileInfoV2FromChain as any);
+      }
+
+      return filesInfoV2;
+    } catch (err) {
+      logger.error(`💥 Error to get files info v2 from chain: ${err}`);
+      return null;
+    } finally {
+      let endTime = performance.now();
+      logger.info(`End to get files info v2 from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+    }
+  }
 
   private async handleMarketTxWithLock(handler: Function) {
     if (this.txLocker.market) {

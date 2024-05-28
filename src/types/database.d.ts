@@ -41,21 +41,56 @@ export interface WorkReportsToProcessOperator {
   updateWorkReportRecordsStatus: (ids: number[], status: WorkReportsProcessStatus) => DbWriteResult;
 }
 
+/// updated_files_to_process table
+type UpdatedFileToProcessStatus = 'new' | 'processed' | 'failed' | 'done';
 
-/// file_replicas_to_update table
-type FileReplicasToUpdateStatus = 'new' | 'updated' | 'failed' | 'done';
-export interface FileReplicasToUpdateRecord {
+export interface UpdatedFileToProcessRecord {
   id: number;
   cid: string;
-  file_size: bigint;
-  replicas: string;
-  status: FileReplicasToUpdateStatus;
+  actual_added_replicas: string;
+  actual_deleted_replicas: string;
+  status: WorkReportsProcessStatus;
   last_updated: number;
   create_at: number;
 }
 
-export interface FileReplicasToUpdateOperator {
-  addFileReplicasAndUpdateWorkReports: (filesInfoMap: Map<string, FileInfo>, workReportIds: number[]) => DbWriteResult;
-  getPendingFileInfos: (count: number) => Promise<FileReplicasToUpdateRecord[]>;
-  updateFileReplicasRecordsStatus: (ids: number[], status: FileReplicasToUpdateStatus) => DbWriteResult;
+export interface UpdatedFilesToProcessOperator {
+  addUpdatedFiles: (updatedFilesMap: Map<number, UpdatedFileToProcess[]>) => Promise<number>;
+  getPendingUpdatedFilesByBlock: (count: number, update_block: number) => Promise<UpdatedFileToProcessRecord[]>;
+  updateRecordsStatus: (ids: number[], status: UpdatedFileToProcessStatus) => DbWriteResult;
+}
+
+/// file_info_v2_to_index table
+type FileInfoV2ToIndexStatus = 'new' | 'processed' | 'failed' | 'done';
+
+export interface FileInfoV2ToIndexRecord {
+  id: number;
+  cid: string;
+  update_block: number;
+  status: FileInfoV2ToIndexStatus;
+  last_updated: number;
+  create_at: number;
+}
+
+export interface FileInfoV2ToIndexOperator {
+  addToIndexFiles: (toIndexFiles: Map<string, Set<number>>) => Promise<nubmer>;
+  getPendingToIndexFileCids: (count: number, update_block: number) => Promise<string[]>;
+  updateRecordsStatus: (cids: string[], update_block: number, status: FileInfoV2ToIndexStatus) => DbWriteResult;
+}
+
+
+/// file_info_v2 table
+
+export interface FileInfoV2Record {
+  id: number;
+  cid: string;
+  file_info: string;
+  update_block: number;
+  last_updated: number;
+  create_at: number;
+}
+
+export interface FileInfoV2Operator {
+  addFilesInfoV2AndUpdateIndexStatus: (filesInfoV2Map: Map<string, FileInfoV2>, cids: string[], update_block: number) => DbWriteResult;
+  getByCids: (cids: string[], start_block: number, end_block: number) => Promise<FileInfoV2Record[]>
 }
