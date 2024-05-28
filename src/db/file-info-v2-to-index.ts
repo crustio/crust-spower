@@ -56,6 +56,7 @@ export function createFileInfoV2ToIndexOperator(db: Database): FileInfoV2ToIndex
         `update file_info_v2_to_index 
          set status = ${status}, last_updated = ${getTimestamp()} 
          where cid in (${cids_str})
+         and status not in ('processed')
          and update_block <= ${update_block}`
       );
     }

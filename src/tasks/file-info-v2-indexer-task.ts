@@ -37,7 +37,7 @@ async function indexFileInfoV2(
       // Get 100 cids per batch
       const cids = await toIndexFilesOp.getPendingToIndexFileCids(100, latestBlock);
       
-      if (cids.length === 0) {
+      if (!cids || cids.length === 0) {
         logger.info(`No more files to index, stop for a while.`);
         break;
       }
@@ -50,6 +50,8 @@ async function indexFileInfoV2(
         // Add to file_info_v2 table and update the index table status in a transaction
         // PS: If partial cids data are not able to retrieve, it means those CIDs have been removed on chain, we just mark all cids[] as processed
         await fileInfoV2Op.addFilesInfoV2AndUpdateIndexStatus(filesInfoV2Map, cids, latestBlock);
+      } else {
+        toIndexFilesOp.updateRecordsStatus(cids, latestBlock, 'processed');
       }
     } catch (err) {
       logger.error(`💥 Error to index file_info_v2 from chain: ${err}`);
@@ -60,7 +62,6 @@ async function indexFileInfoV2(
   } while(true);
 
   // Save the successfully indexed 'latestBlock' to db
-  TODO: It may failed to retrieve the FileInfoV2 data in the above code, need to add more logic
   const configOps = createConfigOps(database);
   await configOps.saveInt(KeyLastSuccessFileInfoV2IndexBlock,latestBlock);
 }
