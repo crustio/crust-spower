@@ -9,14 +9,15 @@ import { logger } from '../utils/logger';
 import { UnsubscribePromise, VoidFn } from '@polkadot/api/types';
 import { SubmittableExtrinsic } from '@polkadot/api/promise/types';
 import Bluebird from 'bluebird';
-import { UpdatedFileToProcess, TxRes, WorkReportsToProcess, FileToUpdate } from '../types/chain';
+import { UpdatedFileToProcess, TxRes, WorkReportsToProcess, FileToUpdate, FileInfoV2 } from '../types/chain';
 import { timeout } from '../utils/promise-utils';
 import { ITuple } from '@polkadot/types/types';
 import { WorkReportsToProcessRecord } from '../types/database';
 
 
 export type Identity = typeof crustTypes.swork.types.Identity;
-export type FileInfoV2 = typeof crustTypes.market.types.FileInfoV2;
+// export type FileInfoV2 = typeof crustTypes.market.types.FileInfoV2;
+// export type Replica = typeof crustTypes.market.types.Replica;
 
 // TODO: Move the definition to crust.js lib
 const customTypes = {
@@ -371,7 +372,7 @@ export default class CrustApi {
       const tx = this.api.tx.market.updateReplicas(fileInfoMapBody, workReportsBody); 
 
       // Send the transaction
-      let txRes = queryToObj(await this.handleMarketTxWithLock(async () => this.sendTx(tx)));
+      let txRes = queryToObj(await this.handleTxWithLock('market', async () => this.sendTx(tx)));
       txRes = txRes ? txRes : {status:'failed', details: 'Null txRes'};
       if (txRes.status == 'success') {
         logger.info(`Update relicas data to chain successfully`);
@@ -430,15 +431,15 @@ export default class CrustApi {
 
       /// ----------------------------------------------------
       /// TODO: Implement a batch query runtime API later and get data in batch instead of one by one for better performance
-      let filesInfoV2 = new Map<string, FileInfoV2>();
+      let fileInfoV2Map = new Map<string, FileInfoV2>();
       for (const cid of cids) {
         const fileInfoV2FromChain = await apiAt.query.market.FilesV2(cid);
         logger.debug(`fileInfoV2FromChain: ${fileInfoV2FromChain}`);
 
-        filesInfoV2.set(cid, fileInfoV2FromChain as any);
+        fileInfoV2Map.set(cid, fileInfoV2FromChain as any);
       }
 
-      return filesInfoV2;
+      return fileInfoV2Map;
     } catch (err) {
       logger.error(`💥 Error to get files info v2 from chain: ${err}`);
       return null;
@@ -448,8 +449,58 @@ export default class CrustApi {
     }
   }
 
-  private async handleMarketTxWithLock(handler: Function) {
-    if (this.txLocker.market) {
+   async getLastSpowerUpdateBlock(): Promise<number> {
+    await this.withApiReady();
+    
+    const block = await this.api.query.swork.lastSpowerUpdateBlock();
+    if (block.isEmpty) {
+      return 0;
+    }
+    return block as any;   
+  }
+
+  async updateSpower(
+    sworkerChangedSpowerMap: Map<string, bigint>,
+    fileNewSpowerMap: Map<string, bigint>,
+    updatedBlocks: Set<number>,
+    ): Promise<boolean> {
+    if (_.isNil(sworkerChangedSpowerMap) || _.isNil(fileNewSpowerMap) || _.isNil(updatedBlocks)) {
+      return false;
+    }
+
+    let startTime = performance.now();
+    logger.info(`Start to update spower data to chain`);
+
+    await this.withApiReady();
+    try {
+      // Construct the transaction object
+      const tx = this.api.tx.sworker.updateSpower(sworkerChangedSpowerMap, fileNewSpowerMap, [...updatedBlocks]); 
+
+      // Send the transaction
+      let txRes = queryToObj(await this.handleTxWithLock('swork', async () => this.sendTx(tx)));
+      txRes = txRes ? txRes : {status:'failed', details: 'Null txRes'};
+      if (txRes.status == 'success') {
+        logger.info(`Update spower data to chain successfully`);
+        return true;
+      }
+      else {
+        /// -----------------------------------------------------------------
+        /// TODO: Check the error code, if it's WorkReport
+        logger.error(`Failled to update spower data to chain: ${txRes.details}`);
+        return false;
+      }
+    } catch (err) {
+      logger.error(`💥 Error to update spower data to chain: ${err}`);
+    } finally {
+      let endTime = performance.now();
+      logger.info(`End to update spower data to chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+    }
+
+    return false;
+  }
+
+  private async handleTxWithLock(lockName: string, handler: Function) {
+    if (this.txLocker[lockName]) {
       return {
         status: 'failed',
         details: 'Tx Locked',
@@ -457,16 +508,16 @@ export default class CrustApi {
     }
 
     try {
-      this.txLocker.market = true;
+      this.txLocker[lockName] = true;
       return await timeout(
         new Promise((resolve, reject) => {
           handler().then(resolve).catch(reject);
         }),
-        7 * 60 * 1000, // 7 min, for valid till checking
+        60 * 1000, // 1 min, for valid till checking
         null
       );
     } finally {
-      this.txLocker.market = false;
+      this.txLocker[lockName] = false;
     }
   }
 

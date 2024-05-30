@@ -23,7 +23,7 @@ export const up: MigrationFn<QueryInterface> = async ({
 
   await createWorkReportsToProcessTable(sequelize);
   await createUpdatedFilesToProcessTable(sequelize);
-  await createFilesInfoV2ToIndexTable(sequelize);
+  // await createFilesInfoV2ToIndexTable(sequelize);
   await createFilesInfoV2Table(sequelize);
 };
 
@@ -173,58 +173,58 @@ async function createUpdatedFilesToProcessTable(sequelize: QueryInterface) {
   });
 }
 
-async function createFilesInfoV2ToIndexTable(sequelize: QueryInterface) {
-  await withTransaction(sequelize, async (transaction) => {
-    await sequelize.createTable(
-      'files_info_v2_to_index',
-      {
-        id: {
-          type: DataTypes.INTEGER,
-          allowNull: false,
-          primaryKey: true,
-        },
-        cid: {
-          type: DataTypes.STRING,
-          allowNull: false,
-        },
-        update_block: {
-          type: DataTypes.INTEGER,
-          allowNull: false,
-          unique: true,
-        },
-        status: {
-          type: DataTypes.STRING,
-          allowNull: false,
-        },
-        last_updated: {
-          type: DataTypes.INTEGER,
-          allowNull: false,
-        },
-        create_at: {
-          type: DataTypes.INTEGER,
-          allowNull: false,
-        },
-      },
-      {
-        transaction,
-      },
-    );
+// async function createFilesInfoV2ToIndexTable(sequelize: QueryInterface) {
+//   await withTransaction(sequelize, async (transaction) => {
+//     await sequelize.createTable(
+//       'files_info_v2_to_index',
+//       {
+//         id: {
+//           type: DataTypes.INTEGER,
+//           allowNull: false,
+//           primaryKey: true,
+//         },
+//         cid: {
+//           type: DataTypes.STRING,
+//           allowNull: false,
+//         },
+//         update_block: {
+//           type: DataTypes.INTEGER,
+//           allowNull: false,
+//           unique: true,
+//         },
+//         status: {
+//           type: DataTypes.STRING,
+//           allowNull: false,
+//         },
+//         last_updated: {
+//           type: DataTypes.INTEGER,
+//           allowNull: false,
+//         },
+//         create_at: {
+//           type: DataTypes.INTEGER,
+//           allowNull: false,
+//         },
+//       },
+//       {
+//         transaction,
+//       },
+//     );
 
-    await sequelize.addIndex('files_info_v2_to_index', ['cid', 'update_block'], {
-      transaction,
-      unique: true,
-    });
-    await sequelize.addIndex('files_info_v2_to_index', ['status','update_block'], {
-      transaction,
-    });
-    await sequelize.addIndex('files_info_v2_to_index', ['last_updated'], {
-      transaction,
-    });
-    await sequelize.addIndex('files_info_v2_to_index', ['create_at'], {
-      transaction,
-    });
-  });
-}
+//     await sequelize.addIndex('files_info_v2_to_index', ['cid', 'update_block'], {
+//       transaction,
+//       unique: true,
+//     });
+//     await sequelize.addIndex('files_info_v2_to_index', ['status','update_block'], {
+//       transaction,
+//     });
+//     await sequelize.addIndex('files_info_v2_to_index', ['last_updated'], {
+//       transaction,
+//     });
+//     await sequelize.addIndex('files_info_v2_to_index', ['create_at'], {
+//       transaction,
+//     });
+//   });
+// }
 
 
 async function createFilesInfoV2Table(sequelize: QueryInterface) {

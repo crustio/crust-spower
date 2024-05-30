@@ -7,6 +7,7 @@ const chainConfigSchema = Joi.object().keys({
   endPoint: Joi.string().required(),
   backup: Joi.string().required(),
   password: Joi.string().required(),
+  calculateFromBlock: Joi.string().required(),
 });
 
 const telemetryConfigSchema = Joi.object().keys({

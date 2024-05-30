@@ -26,7 +26,7 @@ export interface LatestBlockTime {
 }
 
 /// work_reports_to_process table
-type WorkReportsProcessStatus = 'new' | 'processed' | 'failed' | 'done';
+type WorkReportsProcessStatus = 'new' | 'processed' | 'failed';
 
 export interface WorkReportsToProcessRecord extends WorkReportsToProcess {
   id: number;
@@ -42,13 +42,12 @@ export interface WorkReportsToProcessOperator {
 }
 
 /// updated_files_to_process table
-type UpdatedFileToProcessStatus = 'new' | 'processed' | 'failed' | 'done';
+type UpdatedFileToProcessStatus = 'new' | 'processed' | 'failed';
 
 export interface UpdatedFileToProcessRecord {
   id: number;
-  cid: string;
-  actual_added_replicas: string;
-  actual_deleted_replicas: string;
+  update_block: number;
+  updated_files: string;
   status: WorkReportsProcessStatus;
   last_updated: number;
   create_at: number;
@@ -56,28 +55,27 @@ export interface UpdatedFileToProcessRecord {
 
 export interface UpdatedFilesToProcessOperator {
   addUpdatedFiles: (updatedFilesMap: Map<number, UpdatedFileToProcess[]>) => Promise<number>;
-  getPendingUpdatedFilesByBlock: (count: number, update_block: number) => Promise<UpdatedFileToProcessRecord[]>;
+  getPendingUpdatedFiles: (count: number) => Promise<UpdatedFileToProcessRecord[]>;
   updateRecordsStatus: (ids: number[], status: UpdatedFileToProcessStatus) => DbWriteResult;
 }
 
-/// file_info_v2_to_index table
-type FileInfoV2ToIndexStatus = 'new' | 'processed' | 'failed' | 'done';
+// /// file_info_v2_to_index table
+// type FileInfoV2ToIndexStatus = 'new' | 'processed' | 'failed';
 
-export interface FileInfoV2ToIndexRecord {
-  id: number;
-  cid: string;
-  update_block: number;
-  status: FileInfoV2ToIndexStatus;
-  last_updated: number;
-  create_at: number;
-}
+// export interface FileInfoV2ToIndexRecord {
+//   id: number;
+//   cid: string;
+//   update_block: number;
+//   status: FileInfoV2ToIndexStatus;
+//   last_updated: number;
+//   create_at: number;
+// }
 
-export interface FileInfoV2ToIndexOperator {
-  addToIndexFiles: (toIndexFiles: Map<string, Set<number>>) => Promise<nubmer>;
-  getPendingToIndexFileCids: (count: number, update_block: number) => Promise<string[]>;
-  updateRecordsStatus: (cids: string[], update_block: number, status: FileInfoV2ToIndexStatus) => DbWriteResult;
-}
-
+// export interface FileInfoV2ToIndexOperator {
+//   addToIndexFiles: (toIndexFiles: Map<string, Set<number>>) => Promise<nubmer>;
+//   getPendingToIndexFileCids: (count: number, update_block: number) => Promise<string[]>;
+//   updateRecordsStatus: (cids: string[], update_block: number, status: FileInfoV2ToIndexStatus) => DbWriteResult;
+// }
 
 /// file_info_v2 table
 
@@ -91,6 +89,7 @@ export interface FileInfoV2Record {
 }
 
 export interface FileInfoV2Operator {
-  addFilesInfoV2AndUpdateIndexStatus: (filesInfoV2Map: Map<string, FileInfoV2>, cids: string[], update_block: number) => DbWriteResult;
-  getByCids: (cids: string[], start_block: number, end_block: number) => Promise<FileInfoV2Record[]>
+  add: (fileInfoV2Map: Map<string, FileInfoV2>, update_block: number) => Promise<number>;
+  getFileInfoV2AtBlock: (cids: string[], update_block: number) => Promise<FileInfoV2Record[]>;
+  getNonExistCids: (cids: string[], update_block: number) => Promise<string[]>;
 }

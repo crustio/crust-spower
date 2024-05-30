@@ -3,6 +3,7 @@ export interface ChainConfig {
   endPoint: string;
   backup: string;
   password: string;
+  calculateFromBlock: string;
 }
 
 export interface TelemetryConfig {

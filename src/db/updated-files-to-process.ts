@@ -30,13 +30,12 @@ export function createUpdatedFilesToProcessOperator(db: Database): UpdatedFilesT
     return insertRecordsCount;
   };
 
-  const getPendingUpdatedFilesByBlock = async (
+  const getPendingUpdatedFiles = async (
     count: number,
-    update_block: number
   ): Promise<UpdatedFileToProcessRecord[]> => {
     return await db.all(
         `select * from updated_files_to_process 
-         where status in ('new', 'failed') and update_block <= ${update_block}
+         where status in ('new', 'failed')
          order by update_block asc limit ${count}`
     );
   };
@@ -52,13 +51,12 @@ export function createUpdatedFilesToProcessOperator(db: Database): UpdatedFilesT
         [status, getTimestamp()],
       );
     }
-    
   };
 
   
   return {
     addUpdatedFiles,
-    getPendingUpdatedFilesByBlock,
+    getPendingUpdatedFiles,
     updateRecordsStatus
   };
 }
