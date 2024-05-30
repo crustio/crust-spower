@@ -55,25 +55,26 @@ async function calculateSpower(
 
       // 1. Extrace all the updated files and their updated replicas
       logger.debug(`1. Extrace all the updated files and their updated replicas.`);
-      let updatedFileCIDs = new Set<string>();
+      //let updatedFileCIDs = new Set<string>();
+      let updatedFiles = new Map<string, UpdatedFileToProcess>(); // The key is cid, records the latest UpdatedFileInfo for this cid
       let updatedBlocks = new Set<number>();
       let sworkerAddedReplicasMap = new Map<string, Map<string, ReplicaToUpdate>>();  // Map<SworkerAnchor, Map<CID, ReplicaToUpdate>>
       let sworkerDeletedReplicasMap = new Map<string, Map<string, ReplicaToUpdate>>(); // Map<SworkerAnchor, Map<CID, ReplicaToUpdate>>
       let mergedAddedReplicasMap = new Map<string, ReplicaToUpdateEx[]>(); // The key is cid
       let mergedDeletedReplicasMap = new Map<string, ReplicaToUpdateEx[]>(); // The key is cid
-      
+
       for (const record of updatedBlocksOfFiles) {
         // Record all the updated blocks in this batch
         updatedBlocks.add(record.update_block);
 
-        const updatedFiles = JSON.parse(record.updated_files) as UpdatedFileToProcess[];
-        for (const file of updatedFiles) {
-          const cid = file.cid;
-          // Record all the updated file cids in this batch
-          updatedFileCIDs.add(cid);
+        const updatedFilesToProcess = JSON.parse(record.updated_files) as UpdatedFileToProcess[];
+        for (const updatedFileInfo of updatedFilesToProcess) {
+          const cid = updatedFileInfo.cid;
+          // Record the latest updatedFileInfo for this cid
+          updatedFiles.set(cid, updatedFileInfo);
 
           // Construct the sworkerAddedReplicasMap
-          for (const addedReplica of file.actual_added_replicas) {
+          for (const addedReplica of updatedFileInfo.actual_added_replicas) {
             let fileToReplicasMap = sworkerAddedReplicasMap.get(addedReplica.sworker_anchor);
             if (!fileToReplicasMap) {
               fileToReplicasMap = new Map<string, ReplicaToUpdate>();
@@ -83,7 +84,7 @@ async function calculateSpower(
           }
           
           // Construct the sworkerDeletedReplicasMap
-          for (const deletedReplica of file.actual_deleted_replicas) {
+          for (const deletedReplica of updatedFileInfo.actual_deleted_replicas) {
             let fileToReplicasMap = sworkerDeletedReplicasMap.get(deletedReplica.sworker_anchor);
             if (!fileToReplicasMap) {
               fileToReplicasMap = new Map<string, ReplicaToUpdate>();
@@ -98,7 +99,7 @@ async function calculateSpower(
             addedReplicas = [];
             mergedAddedReplicasMap.set(cid, addedReplicas);
           }
-          for (const replicaToUpdate of file.actual_added_replicas) {
+          for (const replicaToUpdate of updatedFileInfo.actual_added_replicas) {
             let replicaEx: ReplicaToUpdateEx = {
               create_at: record.update_block,
               ...replicaToUpdate
@@ -112,7 +113,7 @@ async function calculateSpower(
             deletedReplicas = [];
             mergedDeletedReplicasMap.set(cid, deletedReplicas);
           }
-          for (const replicaToUpdate of file.actual_deleted_replicas) {
+          for (const replicaToUpdate of updatedFileInfo.actual_deleted_replicas) {
             let replicaEx: ReplicaToUpdateEx = {
               create_at: record.update_block,
               ...replicaToUpdate
@@ -121,18 +122,29 @@ async function calculateSpower(
           }
         }
       }
-      logger.debug(`Updated files size: ${updatedFileCIDs.size}`);
+      logger.debug(`Updated files size: ${updatedFiles.size}`);
 
       // 2. Get the filesInfoV2 data
       logger.debug(`2. Get the filesInfoV2 data`);
-      const fileInfoV2Map = await getFileInfoV2AtBlock(context, logger, [...updatedFileCIDs], lastSpowerUpdateBlock);
+      const fileInfoV2Map = await getFileInfoV2AtBlock(context, logger, [...updatedFiles.keys()], lastSpowerUpdateBlock);
       
-      // 3. Replay the actual_added_replicas and actual_deleted_replicas for the fileInfoV2Map on lastSpowerUpdateBlock 
-      //    to get the new fileInfoV2Map on the latest update_block from updatedBlocksOfFiles in this round.
+      // 3. Replay the updated files info and the all added/deleted replicas for the fileInfoV2Map at the lastSpowerUpdateBlock 
+      //    to get the new fileInfoV2Map at the latest update_block from updatedBlocksOfFiles in this round.
       logger.debug(`3. Replay the actual_added_replicas and actual_deleted_replicas`);
       
       for (const [cid, fileInfoV2] of fileInfoV2Map) {
-        
+        // Update the fileInfo
+        const latestFileInfo = updatedFiles.get(cid);
+        fileInfoV2.file_size = latestFileInfo.file_size;
+        fileInfoV2.spower = latestFileInfo.spower;
+        fileInfoV2.expired_at = latestFileInfo.expired_at;
+        fileInfoV2.calculated_at = latestFileInfo.calculated_at;
+        fileInfoV2.amount = latestFileInfo.amount;
+        fileInfoV2.prepaid = latestFileInfo.prepaid;
+        fileInfoV2.reported_replica_count = latestFileInfo.reported_replica_count;
+        fileInfoV2.remaining_paid_count = latestFileInfo.remaining_paid_count;
+
+        // Update replicas
         let replicas: Map<string, Replica> = fileInfoV2.replicas;
 
         // Replay all the actual_added_replicas
