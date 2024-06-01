@@ -13,7 +13,7 @@ export function createFileInfoV2Operator(db: Database): FileInfoV2Operator {
     let insertRecordsCount = 0;
 
     for (const [cid, fileInfo] of fileInfoV2Map) {
-      const result = await db.run('insert or ignore into file_info_v2 ' + 
+      const result = await db.run('insert or ingore into files_info_v2 ' + 
             '(`cid`,`update_block`,`file_info`,`last_updated`, `create_at`)' + 
             'values (?,?,?,?,?)',
             [cid, update_block, JSON.stringify(fileInfo), getTimestamp(), getTimestamp()]
@@ -32,7 +32,7 @@ export function createFileInfoV2Operator(db: Database): FileInfoV2Operator {
 
         const cids_str = cids.map((cid)=>`'${cid}'`).join(',');
         return await db.all(
-            `select * from file_info_v2_to_index 
+            `select * from files_info_v2 
              where cid in (${cids_str}) and update_block = ${update_block}`
     );
   }
@@ -40,12 +40,12 @@ export function createFileInfoV2Operator(db: Database): FileInfoV2Operator {
 
   const getNonExistCids = async (
     cids: string[], update_block: number
-  ): Promise<string[]> {
+  ): Promise<string[]> => {
 
     const cids_str = cids.map((cid)=>`'${cid}'`).join(',');
     const existCids: string[] = await db.all(
         `select cid
-         from file_info_v2_to_index 
+         from files_info_v2 
          where cid in (${cids_str}) and update_block = ${update_block}`);
 
     const existCidsSet = new Set(existCids);

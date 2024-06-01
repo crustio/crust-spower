@@ -11,9 +11,8 @@ import { SubmittableExtrinsic } from '@polkadot/api/promise/types';
 import Bluebird from 'bluebird';
 import { UpdatedFileToProcess, TxRes, WorkReportsToProcess, FileToUpdate, FileInfoV2 } from '../types/chain';
 import { timeout } from '../utils/promise-utils';
-import { ITuple } from '@polkadot/types/types';
 import { WorkReportsToProcessRecord } from '../types/database';
-
+import {ITuple} from '@polkadot/types/types';
 
 export type Identity = typeof crustTypes.swork.types.Identity;
 // export type FileInfoV2 = typeof crustTypes.market.types.FileInfoV2;
@@ -26,7 +25,30 @@ const customTypes = {
     extrinsic_index: 'u32',
     reporter: 'AccountId',
     owner: 'AccountId'
-  }
+  },
+  ReplicaToUpdate: {
+    reporter: 'AccountId',
+    owner: 'AccountId',
+    sworker_anchor: 'SworkerAnchor',
+    report_slot: 'ReportSlot',
+    report_block: 'BlockNumber',
+    valid_at: 'BlockNumber',
+    is_added: 'bool'
+  },
+  UpdatedFileInfoOf: {
+    cid: 'MerkleRoot',
+    file_size: 'u64',
+    spower: 'u64',
+    expired_at: 'BlockNumber',
+    calculated_at: 'BlockNumber',
+    amount: 'Compact<Balance>',
+    prepaid: 'Compact<Balance>',
+    reported_replica_count: 'u32',
+    remaining_paid_count: 'u32',
+    actual_added_replicas: 'Vec<ReplicaToUpdate<AccountId>>',
+    actual_deleted_replicas: 'Vec<ReplicaToUpdate<AccountId>>'
+  },
+  DispathErrorModule: 'DispatchErrorModuleU8'
 }
 
 export default class CrustApi {
@@ -358,15 +380,15 @@ export default class CrustApi {
       let fileInfoMapBody = [];
       let workReportsBody = [];
       filesInfoMap.forEach((fileInfo, cid) => {
-        const entry = [cid, fileInfo.file_size, fileInfo.replicas];
+        const entry = [cid, fileInfo.file_size, fileInfo.replicas.map((replica) =>{
+          return [replica.reporter, replica.owner, replica.sworker_anchor, replica.report_slot, replica.report_block, replica.valid_at, replica.is_added];
+        })];
         fileInfoMapBody.push(entry);
       });
       workReports.forEach(wr => {
         const entry = [wr.sworker_anchor, wr.report_slot];
         workReportsBody.push(entry);
       });
-      logger.debug(`fileInfoMapBody: ${JSON.stringify(fileInfoMapBody)}`);
-      logger.debug(`workReportsBody: ${JSON.stringify(workReportsBody)}`);
 
       // Construct the transaction object
       const tx = this.api.tx.market.updateReplicas(fileInfoMapBody, workReportsBody); 
@@ -400,12 +422,12 @@ export default class CrustApi {
     try {
       // Get all the entries from the latest block
       const updatedFilesToProcessChain = await this.api.query.market.updatedFilesToProcess.entries();
-      logger.info(`Updated Files to process: ${updatedFilesToProcessChain.length}`);
+      logger.info(`Updated blocks of files to process: ${updatedFilesToProcessChain.length}`);
 
       let updatedFilesMap = new Map<number, UpdatedFileToProcess[]>();
       // updatedFilesToProcess is defined in the chain as map (update_block) => Vec<{cid, actual_added_replicas, actual_deleted_replicas}> 
       for (const [{args: [updateBlock] }, value] of updatedFilesToProcessChain){
-          logger.debug(`updatedFileInfo: ${updateBlock} - ${value}`);
+          logger.debug(`Updated files info of block: ${updateBlock} - ${value}`);
           let updatedFiles = JSON.parse(value as any) as UpdatedFileToProcess[];
 
           updatedFilesMap.set(updateBlock as any, updatedFiles);
@@ -414,7 +436,7 @@ export default class CrustApi {
       return updatedFilesMap;
     } catch (err) {
       logger.error(`💥 Error to get updated files from chain: ${err}`);
-      return null;
+      throw err;
     } finally {
       let endTime = performance.now();
       logger.info(`End to get updated files from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
@@ -427,14 +449,14 @@ export default class CrustApi {
     logger.info(`Start to get files info v2 from chain`);
     await this.withApiReady();
     try {
-      const apiAt = await this.api.at(await this.getBlockHash(at_block));
-
+      //const apiAt = await this.api.at(await this.getBlockHash(at_block));
+      const blockHash = await this.getBlockHash(at_block);
       /// ----------------------------------------------------
       /// TODO: Implement a batch query runtime API later and get data in batch instead of one by one for better performance
       let fileInfoV2Map = new Map<string, FileInfoV2>();
       for (const cid of cids) {
-        const fileInfoV2FromChain = await apiAt.query.market.FilesV2(cid);
-        logger.debug(`fileInfoV2FromChain: ${fileInfoV2FromChain}`);
+        const fileInfoV2FromChain = await this.api.query.market.filesV2.at(blockHash, cid);
+        logger.debug(`fileInfoV2FromChain: ${JSON.stringify(fileInfoV2FromChain)}`);
 
         fileInfoV2Map.set(cid, fileInfoV2FromChain as any);
       }
@@ -442,7 +464,7 @@ export default class CrustApi {
       return fileInfoV2Map;
     } catch (err) {
       logger.error(`💥 Error to get files info v2 from chain: ${err}`);
-      return null;
+      throw err;
     } finally {
       let endTime = performance.now();
       logger.info(`End to get files info v2 from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
@@ -485,7 +507,7 @@ export default class CrustApi {
       }
       else {
         /// -----------------------------------------------------------------
-        /// TODO: Check the error code, if it's WorkReport
+        /// TODO: Check the error code, if it's ExpiredSpowerUpdateBlock
         logger.error(`Failled to update spower data to chain: ${txRes.details}`);
         return false;
       }
@@ -524,9 +546,7 @@ export default class CrustApi {
   private async sendTx(tx: SubmittableExtrinsic) {
     return new Promise((resolve, reject) => {
       tx.signAndSend(this.krp, ({events = [], status}) => {
-        logger.info(
-          `  ↪ 💸 [tx]: Transaction status: ${status.type}, nonce: ${tx.nonce}`
-        );
+        logger.info(`  ↪ 💸 [tx]: Transaction status: ${status.type}, nonce: ${tx.nonce}`);
 
         if (status.isInvalid || status.isDropped || status.isUsurped) {
           reject(new Error(`${status.type} transaction.`));
@@ -534,43 +554,40 @@ export default class CrustApi {
           // Pass it
         }
 
-        if (status.isInBlock) {
+        if (status.isInBlock || status.isFinalized) {
           events.forEach(({event: {data, method, section}}) => {
-            if (section === 'system' && method === 'ExtrinsicFailed') {
-              const [dispatchError] = data as unknown as ITuple<[DispatchError]>;
-              const result: TxRes = {
-                status: 'failed',
-                message: dispatchError.type,
-              };
-              // Can get detail error info
-              if (dispatchError.isModule) {
-                const mod = dispatchError.asModule;
-                const error = this.api.registry.findMetaError(
-                  new Uint8Array([mod.index.toNumber(), mod.error.toNumber()])
-                );
-                result.message = `${error.section}.${error.name}`;
-                result.details = error.documentation.join('');
-              }
-
-              logger.info(
-                `  ↪ 💸 ❌ [tx]: Send transaction(${tx.type}) failed with ${result.message}.`
+          if (section === 'system' && method === 'ExtrinsicFailed') {
+            const [dispatchError] = data as unknown as ITuple<[DispatchError]>;
+            const result: TxRes = {
+              status: 'failed',
+              message: dispatchError.type,
+            };
+            // Can get detail error info
+            if (dispatchError.isModule) {
+              const mod = dispatchError.asModule;
+              const error = this.api.registry.findMetaError(
+                new Uint8Array([mod.index.toNumber(), mod.error.toNumber()])
               );
-              resolve(result);
-            } else if (method === 'ExtrinsicSuccess') {
-              const result: TxRes = {
-                status: 'success',
-              };
-
-              logger.info(
-                `  ↪ 💸 ✅ [tx]: Send transaction(${tx.type}) success.`
-              );
-              resolve(result);
+              result.message = `${error.section}.${error.name}`;
+              result.details = error.documentation.join('');
             }
-          });
+
+            logger.info(`  ↪ 💸 ❌ [tx]: Send transaction(${tx.type}) failed with ${result.message}.`);
+            resolve(result);
+          } else if (method === 'ExtrinsicSuccess') {
+            const result: TxRes = {
+              status: 'success',
+            };
+
+            logger.info(`  ↪ 💸 ✅ [tx]: Send transaction(${tx.type}) success.`);
+            resolve(result);
+          }
+        });
         } else {
           // Pass it
         }
       }).catch(e => {
+        logger.error(`Exceptions happens in tx.signAndSend(): ${e}`);
         reject(e);
       });
     });

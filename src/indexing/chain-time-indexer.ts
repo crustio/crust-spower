@@ -34,7 +34,7 @@ export async function createChainTimeIndexer(
       const timestamp = await api.chainApi().query.timestamp.now.at(hash);
       const latestData = {
         block,
-        time: timestamp.toNumber(),
+        time: parseInt(timestamp.toString()),
       } as LatestBlockTime;
       logger.debug('write latest block time to config: %o', latestData);
       await configOps.saveJson(KeyLatestBlockTime, latestData);

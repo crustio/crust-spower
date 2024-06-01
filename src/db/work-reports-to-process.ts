@@ -9,6 +9,15 @@ export function createWorkReportsToProcessOperator(db: Database): WorkReportsToP
       workReports: WorkReportsToProcess[]
   ): Promise<number> => {
 
+    // Sort by the report_block and extrinsic index
+    workReports.sort((a, b) => {
+        if (a.report_block === b.report_block) {
+          return a.extrinsic_index - b.extrinsic_index;
+        } else {
+          return a.report_block - b.report_block;
+        }
+    });
+
     let insertRecordsCount = 0;
     for (const wr of workReports) {
         // sworker_anchor + report_slot should be unique, compose unique index is defined, so use 'insert or ignore into' here

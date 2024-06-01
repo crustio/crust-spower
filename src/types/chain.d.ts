@@ -37,14 +37,14 @@ export interface TxRes {
 
 export interface UpdatedFileToProcess {
   cid: string;
-  file_size: bigint,
-  spower: bigint,
-  expired_at: number,
-  calculated_at: number,
-  amount: bigint,
-  prepaid: bigint,
-  reported_replica_count: number,
-  remaining_paid_count: number,
+  // file_size: bigint,
+  // spower: bigint,
+  // expired_at: number,
+  // calculated_at: number,
+  // amount: bigint,
+  // prepaid: bigint,
+  // reported_replica_count: number,
+  // remaining_paid_count: number,
   actual_added_replicas: ReplicaToUpdate[];
   actual_deleted_replicas: ReplicaToUpdate[];
 }

@@ -9,7 +9,7 @@ import { IsStopped, makeIntervalTask } from './task-utils';
 import { FileInfoV2, Replica, ReplicaToUpdate, UpdatedFileToProcess } from '../types/chain';
 import Bluebird from 'bluebird';
 import { createUpdatedFilesToProcessOperator } from '../db/updated-files-to-process';
-import { createFileInfoV2Operator } from '../db/file-info-v2';
+import { createFileInfoV2Operator } from '../db/files-info-v2';
 import _ from 'lodash';
 
 
@@ -134,15 +134,15 @@ async function calculateSpower(
       
       for (const [cid, fileInfoV2] of fileInfoV2Map) {
         // Update the fileInfo
-        const latestFileInfo = updatedFiles.get(cid);
-        fileInfoV2.file_size = latestFileInfo.file_size;
-        fileInfoV2.spower = latestFileInfo.spower;
-        fileInfoV2.expired_at = latestFileInfo.expired_at;
-        fileInfoV2.calculated_at = latestFileInfo.calculated_at;
-        fileInfoV2.amount = latestFileInfo.amount;
-        fileInfoV2.prepaid = latestFileInfo.prepaid;
-        fileInfoV2.reported_replica_count = latestFileInfo.reported_replica_count;
-        fileInfoV2.remaining_paid_count = latestFileInfo.remaining_paid_count;
+        // const latestFileInfo = updatedFiles.get(cid);
+        // fileInfoV2.file_size = latestFileInfo.file_size;
+        // fileInfoV2.spower = latestFileInfo.spower;
+        // fileInfoV2.expired_at = latestFileInfo.expired_at;
+        // fileInfoV2.calculated_at = latestFileInfo.calculated_at;
+        // fileInfoV2.amount = latestFileInfo.amount;
+        // fileInfoV2.prepaid = latestFileInfo.prepaid;
+        // fileInfoV2.reported_replica_count = latestFileInfo.reported_replica_count;
+        // fileInfoV2.remaining_paid_count = latestFileInfo.remaining_paid_count;
 
         // Update replicas
         let replicas: Map<string, Replica> = fileInfoV2.replicas;
@@ -359,7 +359,7 @@ export async function createSpowerCalculator(
   loggerParent: Logger,
 ): Promise<SimpleTask> {
   // TODO: make it configurable
-  const processInterval = 10 * 1000;  // default is 5 minutes
+  const processInterval = 15 * 1000;  // default is 5 minutes
   return makeIntervalTask(
     5 * 1000,
     processInterval,

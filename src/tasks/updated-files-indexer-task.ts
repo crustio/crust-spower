@@ -10,7 +10,7 @@ import { AppContext } from '../types/context';
 import { SimpleTask } from '../types/tasks';
 import { makeIntervalTask } from './task-utils';
 import { createUpdatedFilesToProcessOperator } from '../db/updated-files-to-process';
-import { createFileInfoV2Operator } from '../db/file-info-v2';
+import { createFileInfoV2Operator } from '../db/files-info-v2';
 import { FileInfoV2 } from '../types/chain';
 
 /**
@@ -28,6 +28,10 @@ async function indexUpdatedFiles(
       /// TODO: This should listen to events instead of get all entries every time
       /// 1. Get updated files to process from Crust Mainnet chain
       const updatedFilesMap = await api.getUpdatedFilesToProcess();
+      if (updatedFilesMap.size === 0) {
+        logger.info('No more updated files to process on chain, stop for a while');
+        return;
+      }
 
       /// 2. Retrieve FileInfoV2 from chain if not exist locally
       // 2.1 Extract the updated files cid from the map

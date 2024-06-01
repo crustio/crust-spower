@@ -47,6 +47,7 @@ async function processWorkReports(
     // -----------------------------------------------------------
     // 1. Aggregate all work reports to file replicas info
     const filesInfoMap = new Map<string, FileToUpdate>();
+    let totalReplicasCount = 0;
     for (const wr of workReports) {
       try {
         let { added_files, deleted_files } = wr;
@@ -56,25 +57,29 @@ async function processWorkReports(
         createFileReplicas(filesInfoMap, wr, added_files_array, true);
         createFileReplicas(filesInfoMap, wr, deleted_files_array, false);
 
-        logger.info(`Work report (id: ${wr.id}) procossed success: new files - ${added_files_array.length}, deleted files - ${deleted_files_array.length}`);
+        totalReplicasCount += added_files_array.length + deleted_files_array.length;
       } catch (err) {
         logger.error(`Work report (id: ${wr.id}) processed failed. Error: ${err}`);
       }
     }
 
-    logger.info(`filesInfoMap size: ${filesInfoMap.size}`);
+    logger.info(`Updated files count: ${filesInfoMap.size}, Updated Replicas count: ${totalReplicasCount}`);
 
     // ---------------------------------------------------------------
     // 2. Update the replicas data to Crust Mainnet Chain
+    let workReportIdsProcessed = workReports.map(wr => wr.id);
     if (filesInfoMap.size > 0) {
       const result = await api.updateReplicas(filesInfoMap, workReports);
-      let workReportIdsProcessed = workReports.map(wr => wr.id);
       if (result === true) {
         await workReportsOp.updateWorkReportRecordsStatus(workReportIdsProcessed, 'processed');
       }
       else {
         await workReportsOp.updateWorkReportRecordsStatus(workReportIdsProcessed, 'failed');
       }
+    } else {
+      logger.warn(`No files updated in this work reports. Empty work reports should not be here!`);
+      // Simply market these empty work reports as 'processed'
+      await workReportsOp.updateWorkReportRecordsStatus(workReportIdsProcessed, 'processed');
     }
 
     // Wait for the next block to do next round, so we make sure at most one market::updateReplicas extrinsic call for one block
