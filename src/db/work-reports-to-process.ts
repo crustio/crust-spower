@@ -1,53 +1,33 @@
 import { Database } from 'sqlite';
 import { WorkReportsToProcessOperator, WorkReportsToProcessRecord, WorkReportsProcessStatus } from '../types/database';
-import { getTimestamp } from '../utils';
 import { WorkReportsToProcess } from '../types/chain';
 
 export function createWorkReportsToProcessOperator(db: Database): WorkReportsToProcessOperator {
 
   const addWorkReports = async (
-      workReports: WorkReportsToProcess[]
+    reportBlock: number, 
+    workReports: WorkReportsToProcess[]
   ): Promise<number> => {
 
-    // Sort by the report_block and extrinsic index
+    // Sort by the extrinsic index
     workReports.sort((a, b) => {
-        if (a.report_block === b.report_block) {
-          return a.extrinsic_index - b.extrinsic_index;
-        } else {
-          return a.report_block - b.report_block;
-        }
+      return a.extrinsic_index - b.extrinsic_index;
     });
 
-    let insertRecordsCount = 0;
-    for (const wr of workReports) {
-        // sworker_anchor + report_slot should be unique, compose unique index is defined, so use 'insert or ignore into' here
-        const result = await db.run(
+    const result = await db.run(
           'insert or ignore into work_reports_to_process ' +
-            '(`sworker_anchor`, `report_slot`, `report_block`, `extrinsic_index`, `reporter`, `owner`, ' +
-            '`reported_srd_size`, `reported_files_size`, `added_files`, `deleted_files`, ' +
-            '`status`, `last_updated`, `create_at`)' +
-            ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          '(`report_block`,  `work_reports`, `status`, `last_updated`, `create_at`)' +
+          ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
-            wr.sworker_anchor,
-            wr.report_slot,
-            wr.report_block,
-            wr.extrinsic_index,
-            wr.reporter,
-            wr.owner,
-            wr.reported_srd_size,
-            wr.reported_files_size,
-            wr.added_files,
-            wr.deleted_files,
+            reportBlock,
+            JSON.stringify(workReports),
             'new',
-            getTimestamp(),
-            getTimestamp(),
+            new Date(),
+            new Date(),
           ]
         );
 
-        insertRecordsCount += result.changes;
-    }
-
-    return insertRecordsCount;
+    return result.changes;
   };
 
   const getPendingWorkReports = async (
@@ -59,7 +39,7 @@ export function createWorkReportsToProcessOperator(db: Database): WorkReportsToP
     );
   };
 
-  const updateWorkReportRecordsStatus = async (
+  const updateStatus = async (
     ids: number[],
     status: WorkReportsProcessStatus,
   ) => {
@@ -67,7 +47,7 @@ export function createWorkReportsToProcessOperator(db: Database): WorkReportsToP
       const ids_str = ids.join(',');
       await db.run(
         `update work_reports_to_process set status = ?, last_updated = ? where id in (${ids_str})`,
-        [status, getTimestamp()],
+        [status, new Date()],
       );
     }
     
@@ -77,6 +57,6 @@ export function createWorkReportsToProcessOperator(db: Database): WorkReportsToP
   return {
     addWorkReports,
     getPendingWorkReports,
-    updateWorkReportRecordsStatus
+    updateStatus
   };
 }

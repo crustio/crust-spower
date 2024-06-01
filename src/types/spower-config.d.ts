@@ -3,7 +3,8 @@ export interface ChainConfig {
   endPoint: string;
   backup: string;
   password: string;
-  calculateFromBlock: string;
+  workReportsProcesserBatchSize: number;
+  spowerCalculateBatchSize: number;
 }
 
 export interface TelemetryConfig {

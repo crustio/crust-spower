@@ -15,7 +15,7 @@ import { timeout, timeoutOrError } from './utils/promise-utils';
 
 const MaxTickTimout = 15 * 1000;
 const ConfigFile = process.env['SPOWER_CONFIG'] || 'spower-config.json';
-const MaxNoNewBlockDuration = Dayjs.duration({
+export const MaxNoNewBlockDuration = Dayjs.duration({
   minutes: 30,
 });
 

@@ -1,5 +1,5 @@
 import { ApiPromise, Keyring, WsProvider } from '@polkadot/api';
-import { BlockHash, Header, SignedBlock, DispatchError } from '@polkadot/types/interfaces';
+import { BlockHash, Header, SignedBlock, DispatchError, Extrinsic, EventRecord } from '@polkadot/types/interfaces';
 import { KeyringPair } from '@polkadot/keyring/types';
 import { formatError, parseObj, queryToObj, sleep } from '../utils';
 import { typesBundleForPolkadot, crustTypes } from '@crustio/type-definitions';
@@ -11,7 +11,6 @@ import { SubmittableExtrinsic } from '@polkadot/api/promise/types';
 import Bluebird from 'bluebird';
 import { UpdatedFileToProcess, TxRes, WorkReportsToProcess, FileToUpdate, FileInfoV2 } from '../types/chain';
 import { timeout } from '../utils/promise-utils';
-import { WorkReportsToProcessRecord } from '../types/database';
 import {ITuple} from '@polkadot/types/types';
 
 export type Identity = typeof crustTypes.swork.types.Identity;
@@ -292,69 +291,69 @@ export default class CrustApi {
     }
   }
 
+  async getLastProcessedBlockWorkReports(): Promise<number> {
+    await this.withApiReady();
+    
+    const block = await this.api.query.swork.lastProcessedBlockWorkReports();
+    if (_.isNil(block) || block.isEmpty) {
+      return 0;
+    }
+    return block as any;   
+  }
+
   /**
-   * Trying to get work reports to process from the latest block
+   * Trying to get work reports to process at the specific block
    * @returns Vec<WorkReportsToProcess>
    * @throws ApiPromise error or type conversing error
    */
-  async getWorkReportsToProcess(): Promise<WorkReportsToProcess[]> {
+  async getWorkReportsToProcess(atBlock: number): Promise<WorkReportsToProcess[]> {
 
     let startTime = performance.now();
     logger.info(`Start to get work reports from chain`);
     await this.withApiReady();
     try {
-      // Get all the entries from the latest block
-      const wrsToProcessChain = await this.api.query.swork.workReportsToProcess.entries();
-      logger.info(`Work Reports to process: ${wrsToProcessChain.length}`);
+      const hash = await this.getBlockHash(atBlock);
+      const block = await this.api.rpc.chain.getBlock(hash);
+      const exs: Extrinsic[] = block.block.extrinsics;
+      const events: EventRecord[] = await this.api.query.system.events.at(hash);
 
       let workReportsToProcess = [];
-      // workReportsToProcess is defined in the chain as double map (sworkerAnchor, reportSlot) => (blockNumber, extrinsicIndex, reporter,) 
-      for (const [{args: [sworkerAnchor, reportSlot]}, value] of wrsToProcessChain){
-          let workReportMetadata = value as any;
-          const report_block = workReportMetadata.report_block;
-          const exIdx = workReportMetadata.extrinsic_index;
-          const reporter = workReportMetadata.reporter;
-          const owner = workReportMetadata.owner;
-          // logger.debug(`${sworkerAnchor}: ${reportSlot} - {blockNumber: ${blockNumber}, exIdx: ${exIdx}, reporter: ${reporter}, owner: ${owner}`);
+      for (const {event: { data, method },phase} of events) {
+        if (method === 'QueueWorkReportSuccess') {
+          // Get the corresponding extrinsic data
+          const exIdx = phase.asApplyExtrinsic.toNumber();
+          const extrinsic = exs[exIdx];
+          // Check the sworker::report_works extrinsic call arguments structure
+          const { method: { args } } = extrinsic;
+          const reportSlot = args[2];
+          const reported_srd_size = args[4];
+          const reported_files_size = args[5];
+          const added_files = args[6];
+          const deleted_files = args[7];
 
-          const blockHash = await this.api.rpc.chain.getBlockHash(report_block);
-          const blockForWorkReport = await this.api.rpc.chain.getBlock(blockHash);
+          // Get data from the event body
+          const sworkerAnchor = data[0];
+          const reporter = data[1];
+          const owner = data[2];
 
-          let exFound = false;
-          blockForWorkReport.block.extrinsics.forEach((extrinsic, index) => {
-              if (index == exIdx) {
-                  exFound = true;
+          let workReport = {
+              sworker_anchor: sworkerAnchor.toString(),
+              report_slot: reportSlot,
+              report_block: atBlock,
+              extrinsic_index: exIdx,
+              reporter: reporter.toString(),
+              owner: owner.toString(),
+              reported_srd_size: reported_srd_size ? reported_srd_size : 0,
+              reported_files_size: reported_files_size ? reported_files_size : 0,
+              added_files: added_files ? added_files : [],
+              deleted_files: deleted_files ? deleted_files : []
+          };
 
-                  // Check the sworker::report_works extrinsic call arguments structure
-                  const { method: { args } } = extrinsic;
-                  const reported_srd_size = args[4];
-                  const reported_files_size = args[5];
-                  const added_files = args[6];
-                  const deleted_files = args[7];
-
-                  let workReport = {
-                      sworker_anchor: sworkerAnchor.toString(),
-                      report_slot: reportSlot,
-                      report_block: report_block,
-                      extrinsic_index: exIdx,
-                      reporter: reporter.toString(),
-                      owner: owner.toString(),
-                      reported_srd_size: reported_srd_size ? reported_srd_size : 0,
-                      reported_files_size: reported_files_size ? reported_files_size : 0,
-                      added_files: added_files ? added_files : [],
-                      deleted_files: deleted_files ? deleted_files : []
-                  };
-
-                  workReportsToProcess.push(workReport);
-                  // logger.debug(`workReport: ${JSON.stringify({section: section, method: method, args: {...workReport}})}`);
-              }
-          });
-
-          if (!exFound) {
-            logger.error(`💥 Extrinsic data not found for blockNumber: ${report_block}, exIdx: ${exIdx}. The connected chain node may not be an archive node!!!`);
-          }
+          workReportsToProcess.push(workReport);
+        }
       }
 
+      logger.info(`Get ${workReportsToProcess.length} Work Reports to process at block '${atBlock}'`);
       return workReportsToProcess;
     } catch (err) {
       logger.error(`💥 Error to query work reports from chain: ${err}`);
@@ -365,7 +364,80 @@ export default class CrustApi {
     }
   }
 
-  async updateReplicas(filesInfoMap: Map<string, FileToUpdate>, workReports: WorkReportsToProcessRecord[]): Promise<boolean> {
+   async getLastProcessedBlockUpdatedFiles(): Promise<number> {
+    await this.withApiReady();
+    
+    const block = await this.api.query.market.lastProcessedBlockUpdatedFiles();
+    if (_.isNil(block) || block.isEmpty) {
+      return 0;
+    }
+    return block as any;   
+  }
+  
+  async getUpdatedFilesToProcess(atBlock: number): Promise<UpdatedFileToProcess[]> {
+
+    let startTime = performance.now();
+    logger.info(`Start to get updated files from chain`);
+    await this.withApiReady();
+    try {
+      const hash = await this.getBlockHash(atBlock);
+      const events: EventRecord[] = await this.api.query.system.events.at(hash);
+
+      let updatedFilesToProcess: UpdatedFileToProcess[] = [];
+      for (const {event: { method }} of events) {
+        if (method === 'UpdateReplicasSuccess') {
+          // There is a successful market::update_replicas extrinsic call in this block
+          // Get the UpdatedFilesToProcess with this block number
+          const updatedFilesToProcessAtBlock = await this.api.query.market.updatedFilesToProcess.at(hash, atBlock);
+
+          updatedFilesToProcess = JSON.parse(updatedFilesToProcessAtBlock as any) as UpdatedFileToProcess[];
+
+          // It's a Map<updateBlock, Vec<UpdateFileToProcess>> structure on chain ,so all entries for this block 
+          // are at the same key, so we can just break here
+          break;
+        }
+      }
+
+      logger.info(`Get ${updatedFilesToProcess.length} Updated Files to process at block '${atBlock}'`);
+      return updatedFilesToProcess;
+    } catch (err) {
+      logger.error(`💥 Error to get updated files from chain: ${err}`);
+      throw err;
+    } finally {
+      let endTime = performance.now();
+      logger.info(`End to get updated files from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+    }
+  }
+
+  async getFilesInfoV2(cids: string[], atBlock: number): Promise<Map<string, FileInfoV2>> {
+
+    let startTime = performance.now();
+    logger.info(`Start to get files info v2 from chain`);
+    await this.withApiReady();
+    try {
+      //const apiAt = await this.api.at(await this.getBlockHash(at_block));
+      const blockHash = await this.getBlockHash(atBlock);
+      /// ----------------------------------------------------
+      /// TODO: Implement a batch query runtime API later and get data in batch instead of one by one for better performance
+      let fileInfoV2Map = new Map<string, FileInfoV2>();
+      for (const cid of cids) {
+        const fileInfoV2FromChain = await this.api.query.market.filesV2.at(blockHash, cid);
+        logger.debug(`fileInfoV2FromChain: ${JSON.stringify(fileInfoV2FromChain)}`);
+
+        fileInfoV2Map.set(cid, fileInfoV2FromChain as any);
+      }
+
+      return fileInfoV2Map;
+    } catch (err) {
+      logger.error(`💥 Error to get files info v2 from chain: ${err}`);
+      throw err;
+    } finally {
+      let endTime = performance.now();
+      logger.info(`End to get files info v2 from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+    }
+  }
+
+  async updateReplicas(filesInfoMap: Map<string, FileToUpdate>, lastProcessedBlockWrs: number): Promise<boolean> {
 
     if (filesInfoMap === null || filesInfoMap.size === 0) {
       return false;
@@ -378,20 +450,15 @@ export default class CrustApi {
     try {
       // Construct the transaction body data
       let fileInfoMapBody = [];
-      let workReportsBody = [];
       filesInfoMap.forEach((fileInfo, cid) => {
         const entry = [cid, fileInfo.file_size, fileInfo.replicas.map((replica) =>{
           return [replica.reporter, replica.owner, replica.sworker_anchor, replica.report_slot, replica.report_block, replica.valid_at, replica.is_added];
         })];
         fileInfoMapBody.push(entry);
       });
-      workReports.forEach(wr => {
-        const entry = [wr.sworker_anchor, wr.report_slot];
-        workReportsBody.push(entry);
-      });
 
       // Construct the transaction object
-      const tx = this.api.tx.market.updateReplicas(fileInfoMapBody, workReportsBody); 
+      const tx = this.api.tx.market.updateReplicas(fileInfoMapBody, lastProcessedBlockWrs); 
 
       // Send the transaction
       let txRes = queryToObj(await this.handleTxWithLock('market', async () => this.sendTx(tx)));
@@ -412,63 +479,6 @@ export default class CrustApi {
     }
 
     return false;
-  }
-
-  async getUpdatedFilesToProcess(): Promise<Map<number, UpdatedFileToProcess[]>> {
-
-    let startTime = performance.now();
-    logger.info(`Start to get updated files from chain`);
-    await this.withApiReady();
-    try {
-      // Get all the entries from the latest block
-      const updatedFilesToProcessChain = await this.api.query.market.updatedFilesToProcess.entries();
-      logger.info(`Updated blocks of files to process: ${updatedFilesToProcessChain.length}`);
-
-      let updatedFilesMap = new Map<number, UpdatedFileToProcess[]>();
-      // updatedFilesToProcess is defined in the chain as map (update_block) => Vec<{cid, actual_added_replicas, actual_deleted_replicas}> 
-      for (const [{args: [updateBlock] }, value] of updatedFilesToProcessChain){
-          logger.debug(`Updated files info of block: ${updateBlock} - ${value}`);
-          let updatedFiles = JSON.parse(value as any) as UpdatedFileToProcess[];
-
-          updatedFilesMap.set(updateBlock as any, updatedFiles);
-      }
-
-      return updatedFilesMap;
-    } catch (err) {
-      logger.error(`💥 Error to get updated files from chain: ${err}`);
-      throw err;
-    } finally {
-      let endTime = performance.now();
-      logger.info(`End to get updated files from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
-    }
-  }
-
-  async getFilesInfoV2(cids: string[], at_block: number): Promise<Map<string, FileInfoV2>> {
-
-    let startTime = performance.now();
-    logger.info(`Start to get files info v2 from chain`);
-    await this.withApiReady();
-    try {
-      //const apiAt = await this.api.at(await this.getBlockHash(at_block));
-      const blockHash = await this.getBlockHash(at_block);
-      /// ----------------------------------------------------
-      /// TODO: Implement a batch query runtime API later and get data in batch instead of one by one for better performance
-      let fileInfoV2Map = new Map<string, FileInfoV2>();
-      for (const cid of cids) {
-        const fileInfoV2FromChain = await this.api.query.market.filesV2.at(blockHash, cid);
-        logger.debug(`fileInfoV2FromChain: ${JSON.stringify(fileInfoV2FromChain)}`);
-
-        fileInfoV2Map.set(cid, fileInfoV2FromChain as any);
-      }
-
-      return fileInfoV2Map;
-    } catch (err) {
-      logger.error(`💥 Error to get files info v2 from chain: ${err}`);
-      throw err;
-    } finally {
-      let endTime = performance.now();
-      logger.info(`End to get files info v2 from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
-    }
   }
 
    async getLastSpowerUpdateBlock(): Promise<number> {

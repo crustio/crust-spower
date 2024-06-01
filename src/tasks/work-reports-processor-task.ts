@@ -8,9 +8,9 @@ import { createWorkReportsToProcessOperator } from '../db/work-reports-to-proces
 import { AppContext } from '../types/context';
 import { SimpleTask } from '../types/tasks';
 import { IsStopped, makeIntervalTask } from './task-utils';
-import { WorkReportsToProcessRecord } from '../types/database';
-import { FileToUpdate, ReplicaToUpdate } from '../types/chain';
+import { FileToUpdate, ReplicaToUpdate, WorkReportsToProcess } from '../types/chain';
 import { stringToHex } from '../utils';
+import _ from 'lodash';
 
 /**
  * main entry funciton for the task
@@ -20,8 +20,14 @@ async function processWorkReports(
   logger: Logger,
   isStopped: IsStopped,
 ) {
-  const { api, database } = context;
+  const { api, database, config } = context;
   const workReportsOp = createWorkReportsToProcessOperator(database);
+
+  // The default blocks to process batch size is 15
+  // Right now there're around 1600 sworker nodes in the whole chain, 1600 work reports will be sent 
+  // from the 10th to 399th block in one slot, that means 1600 wrs in 390 blocks, average 4~5 wrs/block
+  // 15 blocks will have around 75 work reports
+  const batchSize = config.workReportsProcesserBatchSize;
   let round = 1;
 
   do {
@@ -29,57 +35,48 @@ async function processWorkReports(
       return;
     }
 
-    //// TODO: Get a snapshot pending work reports count, otherwise the work-reports-indexer will add new work reports from every block
-    //// The loop here may keep running.
-
-    // Get 60 work reports per time
-    // Right now there're around 1600 sworker nodes in the whole chain, 1600 work reports will be sent 
-    // from the 10th to 399th block in one slot, that means 1600 wrs in 390 blocks, ~4 wrs/block
-    // so if this processor task runs every 3 minutes, which contains around 30 blocks, which means there would be ~120 new wrs 
-    // in the work-reports-to-process table, get 60 wrs per time will make the processor finish in two or three blocks
-    const workReports = await workReportsOp.getPendingWorkReports(60);
-    if (workReports.length === 0) {
+    const blocksOfWorkReports = await workReportsOp.getPendingWorkReports(batchSize);
+    if (blocksOfWorkReports.length === 0) {
       logger.info(`No more work reports to process, stop for a while.`);
       break;
     }
-    logger.info(`Round ${round}: ${workReports.length} work reports to process.`);
+    logger.info(`Round ${round}: ${blocksOfWorkReports.length} blocks of work reports to process.`);
 
-    // -----------------------------------------------------------
-    // 1. Aggregate all work reports to file replicas info
-    const filesInfoMap = new Map<string, FileToUpdate>();
-    let totalReplicasCount = 0;
-    for (const wr of workReports) {
-      try {
-        let { added_files, deleted_files } = wr;
+    try {
+      // -----------------------------------------------------------
+      // 1. Aggregate all work reports to file replicas info
+      const filesInfoMap = new Map<string, FileToUpdate>(); // Key is cid
+      let recordIdsProcessed = [];
+      let totalWorkReportsCount = 0;
+      let totalReplicasCount = 0;
+      for (const record of blocksOfWorkReports) {
+        recordIdsProcessed.push(record.id);
+        const workReports: WorkReportsToProcess[] = JSON.parse(record.work_reports) as WorkReportsToProcess[];
+        for (const wr of workReports) {
+          let { added_files, deleted_files } = wr;
 
-        const added_files_array: [] = JSON.parse(added_files);
-        const deleted_files_array: [] = JSON.parse(deleted_files);
-        createFileReplicas(filesInfoMap, wr, added_files_array, true);
-        createFileReplicas(filesInfoMap, wr, deleted_files_array, false);
+          const added_files_array: [] = JSON.parse(added_files);
+          const deleted_files_array: [] = JSON.parse(deleted_files);
+          createFileReplicas(filesInfoMap, wr, added_files_array, true);
+          createFileReplicas(filesInfoMap, wr, deleted_files_array, false);
 
-        totalReplicasCount += added_files_array.length + deleted_files_array.length;
-      } catch (err) {
-        logger.error(`Work report (id: ${wr.id}) processed failed. Error: ${err}`);
+          totalWorkReportsCount++;
+          totalReplicasCount += added_files_array.length + deleted_files_array.length;
+        }
       }
-    }
+      logger.info(`Work reports count: ${totalWorkReportsCount}, Updated files count: ${filesInfoMap.size}, Updated Replicas count: ${totalReplicasCount}`);
 
-    logger.info(`Updated files count: ${filesInfoMap.size}, Updated Replicas count: ${totalReplicasCount}`);
-
-    // ---------------------------------------------------------------
-    // 2. Update the replicas data to Crust Mainnet Chain
-    let workReportIdsProcessed = workReports.map(wr => wr.id);
-    if (filesInfoMap.size > 0) {
-      const result = await api.updateReplicas(filesInfoMap, workReports);
+      // ---------------------------------------------------------------
+      // 2. Update the replicas data to Crust Mainnet Chain
+      const result = await api.updateReplicas(filesInfoMap, _.last(blocksOfWorkReports).report_block);
       if (result === true) {
-        await workReportsOp.updateWorkReportRecordsStatus(workReportIdsProcessed, 'processed');
+        await workReportsOp.updateStatus(recordIdsProcessed, 'processed');
       }
       else {
-        await workReportsOp.updateWorkReportRecordsStatus(workReportIdsProcessed, 'failed');
+        await workReportsOp.updateStatus(recordIdsProcessed, 'failed');
       }
-    } else {
-      logger.warn(`No files updated in this work reports. Empty work reports should not be here!`);
-      // Simply market these empty work reports as 'processed'
-      await workReportsOp.updateWorkReportRecordsStatus(workReportIdsProcessed, 'processed');
+    } catch (err) {
+      logger.error(`Work report processed failed. Error: ${err}`);
     }
 
     // Wait for the next block to do next round, so we make sure at most one market::updateReplicas extrinsic call for one block
@@ -88,7 +85,7 @@ async function processWorkReports(
   } while(true);
 }
 
-function createFileReplicas(filesInfoMap: Map<string, FileToUpdate>, wr: WorkReportsToProcessRecord, updated_files: [], is_added: boolean) {
+function createFileReplicas(filesInfoMap: Map<string, FileToUpdate>, wr: WorkReportsToProcess, updated_files: [], is_added: boolean) {
 
   for (const newFile of updated_files) {
     const cid = newFile[0];

@@ -16,7 +16,7 @@ export const up: MigrationFn<QueryInterface> = async ({
       allowNull: false,
     },
     last_updated: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.DATE,
       allowNull: false,
     },
   });
@@ -43,43 +43,12 @@ async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
           allowNull: false,
           primaryKey: true,
         },
-        sworker_anchor: {
-          type: DataTypes.STRING,
-          allowNull: false,
-        },
-        report_slot: {
-          type: DataTypes.INTEGER,
-          allowNull: false,
-        },
         report_block: {
           type: DataTypes.INTEGER,
           allowNull: false,
+          unique: true,
         },
-        extrinsic_index: {
-          type: DataTypes.INTEGER,
-          allowNull: false,
-        },
-        reporter: {
-          type: DataTypes.STRING,
-          allowNull: false,
-        },
-        owner: {
-          type: DataTypes.STRING,
-          allowNull: false,
-        },
-        reported_srd_size: {
-          type: DataTypes.BIGINT,
-          allowNull: false,
-        },
-        reported_files_size: {
-          type: DataTypes.BIGINT,
-          allowNull: false,
-        },
-        added_files: {
-          type: DataTypes.STRING,
-          allowNull: false,
-        },
-        deleted_files: {
+        work_reports: {
           type: DataTypes.STRING,
           allowNull: false,
         },
@@ -88,11 +57,11 @@ async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
           allowNull: false,
         },
         last_updated: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.DATE,
           allowNull: false,
         },
         create_at: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.DATE,
           allowNull: false,
         },
       },
@@ -101,11 +70,7 @@ async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
       },
     );
 
-    await sequelize.addIndex('work_reports_to_process', ['sworker_anchor','report_slot'], {
-      transaction,
-      unique: true
-    });
-    await sequelize.addIndex('work_reports_to_process', ['report_slot'], {
+    await sequelize.addIndex('work_reports_to_process', ['report_block'], {
       transaction,
     });
     await sequelize.addIndex('work_reports_to_process', ['status','report_block'], {
@@ -135,6 +100,10 @@ async function createUpdatedFilesToProcessTable(sequelize: QueryInterface) {
           allowNull: false,
           unique: true,
         },
+        is_file_info_v2_retrieved: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+        },
         updated_files: {
           type: DataTypes.STRING,
           allowNull: false,
@@ -144,11 +113,11 @@ async function createUpdatedFilesToProcessTable(sequelize: QueryInterface) {
           allowNull: false,
         },
         last_updated: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.DATE,
           allowNull: false,
         },
         create_at: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.DATE,
           allowNull: false,
         },
       },
@@ -160,7 +129,7 @@ async function createUpdatedFilesToProcessTable(sequelize: QueryInterface) {
     await sequelize.addIndex('updated_files_to_process', ['update_block'], {
       transaction,
     });
-    await sequelize.addIndex('updated_files_to_process', ['status','update_block'], {
+    await sequelize.addIndex('updated_files_to_process', ['status','update_block', 'is_file_info_v2_retrieved'], {
       transaction,
     });
     await sequelize.addIndex('updated_files_to_process', ['last_updated'], {
@@ -195,11 +164,11 @@ async function createFilesInfoV2Table(sequelize: QueryInterface) {
           allowNull: false,
         },
         last_updated: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.DATE,
           allowNull: false,
         },
         create_at: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.DATE,
           allowNull: false,
         },
       },

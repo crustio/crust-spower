@@ -13,11 +13,6 @@ import { createFileInfoV2Operator } from '../db/files-info-v2';
 import _ from 'lodash';
 
 
-export const KeyLastSuccessSpowerCalculateBlock = 'spower-calculator:last-success-spower-calculate-block';
-
-interface ReplicaToUpdateEx extends ReplicaToUpdate {
-  create_at: number
-}
 /**
  * main entry funciton for the task
  */
@@ -36,32 +31,28 @@ async function calculateSpower(
         return;
       }
 
-      const lastSpowerUpdateBlock = await api.getLastSpowerUpdateBlock();
-      if (_.isNil(lastSpowerUpdateBlock)) {
-        logger.error(`Failed to get last spower update block from chain, please check the chain RPC node`);
-        // Sleep for a while and try again
-        Bluebird.delay(6000);
-        continue;
+      // Get the minimum update_block with is_file_info_v2_retrieved = true from the unprocessed updated_files_to_process table
+      const calculateTillBlock = await updatedFilesOp.getMinimumUnProcessedBlockWithFileInfoV2Data();
+      if (_.isNil(calculateTillBlock)) {
+        // Two possible cases:
+        // 1. No more updated files to process
+        // 2. There are some records with is_file_info_v2_retrieved = fase, we skip them for this round since they're 
+        //    either retrieved after the 400th block in this report slot, or the related file_info_v2 data is still retrieving
+        //    We dont' want to retrieve file_info_v2 data in this function to avoid time consuming
+        logger.info(`No more qualified updated blocks to process, stop for a while.`);
+        return; 
       }
-      logger.info(`Round ${round} - Last Spower Update Block: ${lastSpowerUpdateBlock}`);
 
-      // Get 10 blocks of updated files per time
-      const updatedBlocksOfFiles = await updatedFilesOp.getPendingUpdatedFiles(10);
-      if (updatedBlocksOfFiles.length === 0) {
-        logger.info(`No more updated blocks to process, stop for a while.`);
-        break;
-      }
-      logger.info(`Round ${round} - ${updatedBlocksOfFiles.length} updated blocks to process.`);
+      // Get updated files till the specific update block
+      const updatedBlocksOfFiles = await updatedFilesOp.getPendingUpdatedFilesTillBlock(calculateTillBlock);
+      logger.info(`Round ${round} - Calculate till block: '${calculateTillBlock}' with ${updatedBlocksOfFiles.length} updated blocks to process.`);
 
       // 1. Extrace all the updated files and their updated replicas
       logger.debug(`1. Extrace all the updated files and their updated replicas.`);
-      //let updatedFileCIDs = new Set<string>();
-      let updatedFiles = new Map<string, UpdatedFileToProcess>(); // The key is cid, records the latest UpdatedFileInfo for this cid
+      let updatedFileCIDs = new Set<string>();
       let updatedBlocks = new Set<number>();
       let sworkerAddedReplicasMap = new Map<string, Map<string, ReplicaToUpdate>>();  // Map<SworkerAnchor, Map<CID, ReplicaToUpdate>>
       let sworkerDeletedReplicasMap = new Map<string, Map<string, ReplicaToUpdate>>(); // Map<SworkerAnchor, Map<CID, ReplicaToUpdate>>
-      let mergedAddedReplicasMap = new Map<string, ReplicaToUpdateEx[]>(); // The key is cid
-      let mergedDeletedReplicasMap = new Map<string, ReplicaToUpdateEx[]>(); // The key is cid
 
       for (const record of updatedBlocksOfFiles) {
         // Record all the updated blocks in this batch
@@ -70,8 +61,8 @@ async function calculateSpower(
         const updatedFilesToProcess = JSON.parse(record.updated_files) as UpdatedFileToProcess[];
         for (const updatedFileInfo of updatedFilesToProcess) {
           const cid = updatedFileInfo.cid;
-          // Record the latest updatedFileInfo for this cid
-          updatedFiles.set(cid, updatedFileInfo);
+          // Record the unique updated cids
+          updatedFileCIDs.add(cid);
 
           // Construct the sworkerAddedReplicasMap
           for (const addedReplica of updatedFileInfo.actual_added_replicas) {
@@ -92,84 +83,13 @@ async function calculateSpower(
             }
             fileToReplicasMap.set(cid, deletedReplica); // There should be a unique deletedReplica for SworkerAnchor + CID
           }
-
-          // Construct the mergedAddedReplicasMap
-          let addedReplicas: ReplicaToUpdateEx[] = mergedAddedReplicasMap.get(cid);
-          if (!addedReplicas) {
-            addedReplicas = [];
-            mergedAddedReplicasMap.set(cid, addedReplicas);
-          }
-          for (const replicaToUpdate of updatedFileInfo.actual_added_replicas) {
-            let replicaEx: ReplicaToUpdateEx = {
-              create_at: record.update_block,
-              ...replicaToUpdate
-            }
-            addedReplicas.push(replicaEx);
-          }
-
-          // Construct the mergedDeletedReplicasMap
-          let deletedReplicas: ReplicaToUpdateEx[] = mergedDeletedReplicasMap.get(cid);
-          if (!deletedReplicas) {
-            deletedReplicas = [];
-            mergedDeletedReplicasMap.set(cid, deletedReplicas);
-          }
-          for (const replicaToUpdate of updatedFileInfo.actual_deleted_replicas) {
-            let replicaEx: ReplicaToUpdateEx = {
-              create_at: record.update_block,
-              ...replicaToUpdate
-            }
-            deletedReplicas.push(replicaEx);
-          }
         }
       }
-      logger.debug(`Updated files size: ${updatedFiles.size}`);
+      logger.debug(`Updated files size: ${updatedFileCIDs.size}`);
 
-      // 2. Get the filesInfoV2 data
+      // 2. Get the filesInfoV2 data at the specific block
       logger.debug(`2. Get the filesInfoV2 data`);
-      const fileInfoV2Map = await getFileInfoV2AtBlock(context, logger, [...updatedFiles.keys()], lastSpowerUpdateBlock);
-      
-      // 3. Replay the updated files info and the all added/deleted replicas for the fileInfoV2Map at the lastSpowerUpdateBlock 
-      //    to get the new fileInfoV2Map at the latest update_block from updatedBlocksOfFiles in this round.
-      logger.debug(`3. Replay the actual_added_replicas and actual_deleted_replicas`);
-      
-      for (const [cid, fileInfoV2] of fileInfoV2Map) {
-        // Update the fileInfo
-        // const latestFileInfo = updatedFiles.get(cid);
-        // fileInfoV2.file_size = latestFileInfo.file_size;
-        // fileInfoV2.spower = latestFileInfo.spower;
-        // fileInfoV2.expired_at = latestFileInfo.expired_at;
-        // fileInfoV2.calculated_at = latestFileInfo.calculated_at;
-        // fileInfoV2.amount = latestFileInfo.amount;
-        // fileInfoV2.prepaid = latestFileInfo.prepaid;
-        // fileInfoV2.reported_replica_count = latestFileInfo.reported_replica_count;
-        // fileInfoV2.remaining_paid_count = latestFileInfo.remaining_paid_count;
-
-        // Update replicas
-        let replicas: Map<string, Replica> = fileInfoV2.replicas;
-
-        // Replay all the actual_added_replicas
-        let addedReplicasToUpdateEx: ReplicaToUpdateEx[] = mergedAddedReplicasMap.get(cid);
-        if (addedReplicasToUpdateEx && addedReplicasToUpdateEx.length > 0) {
-          for (const addedReplicaEx of addedReplicasToUpdateEx) {
-            let replica: Replica = {
-              who: addedReplicaEx.reporter,
-              valid_at: addedReplicaEx.valid_at,
-              anchor: addedReplicaEx.sworker_anchor,
-              is_reported: true,
-              created_at: addedReplicaEx.create_at
-            }
-            replicas.set(addedReplicaEx.owner, replica);
-          }
-        }
-
-        // Relay all the actual_delete_replicas
-        let deletedReplicasToUpdateEx: ReplicaToUpdateEx[] = mergedDeletedReplicasMap.get(cid);
-        if (deletedReplicasToUpdateEx && deletedReplicasToUpdateEx.length > 0) {
-          for (const deletedReplicaEx of deletedReplicasToUpdateEx) {
-            replicas.delete(deletedReplicaEx.owner);
-          }
-        }
-      }
+      const fileInfoV2Map = await getFileInfoV2AtBlock(context, [...updatedFileCIDs], calculateTillBlock);
 
       // 4. Calculate the new spower for all the updated files
       logger.debug(`4. Calculate the new spower for all the updated files`);
@@ -266,27 +186,19 @@ async function calculateSpower(
 
 async function getFileInfoV2AtBlock(
   context: AppContext,
-  logger: Logger,
   cids: string[],
   updateBlock: number,
 ) : Promise<Map<string, FileInfoV2>> {
 
-  const { api, database } = context;
+  const { database } = context;
   const fileInfoV2Op = createFileInfoV2Operator(database);
   let fileInfoV2Map = new Map<string, FileInfoV2>();
 
-  // 1. Get non exist cids from file_info_v2 table
-  const nonExistCids: string[] = await fileInfoV2Op.getNonExistCids(cids, updateBlock);
-  logger.info(`Non-exist cids count in file_info_v2 table for update_block '${updateBlock}': ${nonExistCids.length}`);
-
-  // 2. For exist cids, retreive FileInfoV2 data directly from the local file_info_v2 table
-  const nonExistCidsSet = new Set(nonExistCids);
-  const existCids = cids.filter(cid => !nonExistCidsSet.has(cid) )
+  // Query the file_info_v2 table in batch
   const batchSize = 500;
-  for (let i = 0; i < existCids.length; i += batchSize) {
-    const cidInBatch = existCids.slice(i, i + batchSize);
+  for (let i = 0; i < cids.length; i += batchSize) {
+    const cidInBatch = cids.slice(i, i + batchSize);
 
-    // Query the file_info_v2 table in batch
     const fileInfoV2List = await fileInfoV2Op.getFileInfoV2AtBlock(cidInBatch, updateBlock);
 
     for (const record of fileInfoV2List){
@@ -294,16 +206,6 @@ async function getFileInfoV2AtBlock(
       fileInfoV2Map.set(record.cid, fileInfoV2);
     }
   }
-
-  // 3. For non exist cids, retreive FileInfoV2 data from chain
-  const fileInfoV2MapFromChain: Map<string, FileInfoV2> = await api.getFilesInfoV2(nonExistCids, updateBlock);
-  for (const [cid, fileInfo] of fileInfoV2MapFromChain) {
-    fileInfoV2Map.set(cid, fileInfo);
-  }
-  
-  // 4. Add fileInfoV2MapFromChain to file_info_v2 table
-  const insertRecordsCount = await fileInfoV2Op.add(fileInfoV2MapFromChain, updateBlock);
-  logger.info(`Upsert ${fileInfoV2Map.size} files at block '${updateBlock}' to file_info_v2 table: New - ${insertRecordsCount}, Existing: ${fileInfoV2MapFromChain.size-insertRecordsCount}`);
 
   return fileInfoV2Map;
 }

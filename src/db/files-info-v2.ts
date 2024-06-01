@@ -1,13 +1,12 @@
 import { Database } from 'sqlite';
 import { FileInfoV2Operator, FileInfoV2Record} from '../types/database';
-import { getTimestamp } from '../utils';
 import { FileInfoV2 } from '../types/chain';
 
 export function createFileInfoV2Operator(db: Database): FileInfoV2Operator {
 
   const add = async (
     fileInfoV2Map: Map<string, FileInfoV2>,
-    update_block: number
+    updateBlock: number
   ): Promise<number> => {
 
     let insertRecordsCount = 0;
@@ -16,7 +15,7 @@ export function createFileInfoV2Operator(db: Database): FileInfoV2Operator {
       const result = await db.run('insert or ingore into files_info_v2 ' + 
             '(`cid`,`update_block`,`file_info`,`last_updated`, `create_at`)' + 
             'values (?,?,?,?,?)',
-            [cid, update_block, JSON.stringify(fileInfo), getTimestamp(), getTimestamp()]
+            [cid, updateBlock, JSON.stringify(fileInfo), new Date(), new Date()]
       );
 
       insertRecordsCount += result.changes;
@@ -27,26 +26,26 @@ export function createFileInfoV2Operator(db: Database): FileInfoV2Operator {
 
   const getFileInfoV2AtBlock = async (
     cids: string[],
-    update_block: number,
+    updateBlock: number,
     ): Promise<FileInfoV2Record[]> => {
 
         const cids_str = cids.map((cid)=>`'${cid}'`).join(',');
         return await db.all(
             `select * from files_info_v2 
-             where cid in (${cids_str}) and update_block = ${update_block}`
+             where cid in (${cids_str}) and update_block = ${updateBlock}`
     );
   }
 
 
   const getNonExistCids = async (
-    cids: string[], update_block: number
+    cids: string[], updateBlock: number
   ): Promise<string[]> => {
 
     const cids_str = cids.map((cid)=>`'${cid}'`).join(',');
     const existCids: string[] = await db.all(
         `select cid
          from files_info_v2 
-         where cid in (${cids_str}) and update_block = ${update_block}`);
+         where cid in (${cids_str}) and update_block = ${updateBlock}`);
 
     const existCidsSet = new Set(existCids);
 
