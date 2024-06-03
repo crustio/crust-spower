@@ -9,8 +9,8 @@ export interface WorkReportsToProcess {
   owner: string;
   reported_srd_size: bigint;
   reported_files_size: bigint;
-  added_files: string;
-  deleted_files: string;
+  added_files: [];
+  deleted_files: [];
 }
 
 export interface ReplicaToUpdate{

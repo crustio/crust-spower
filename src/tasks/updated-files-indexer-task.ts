@@ -11,7 +11,7 @@ import { SimpleTask } from '../types/tasks';
 import { IsStopped, makeIntervalTask } from './task-utils';
 import { createUpdatedFilesToProcessOperator } from '../db/updated-files-to-process';
 import { createFileInfoV2Operator } from '../db/files-info-v2';
-import { FileInfoV2 } from '../types/chain';
+import { FileInfoV2, UpdatedFileToProcess } from '../types/chain';
 import { createConfigOps } from '../db/configs';
 import _ from 'lodash';
 import { Dayjs } from '../utils/datetime';
@@ -20,7 +20,7 @@ import Bluebird from 'bluebird';
 
 const KeyLastProcessedBlockUpdatedFiles = 'updated-files-indexer:last-processed-block';
 const KeyAccumulateUnProcessedBlockCount = 'updated-files-indexer:accumulate-unprocessed-block-count';
-
+const defaultSpowerCalculateBatchSize = 3; // Batch size in blocks
 /**
  * main entry funciton for the task
  */
@@ -35,10 +35,10 @@ async function indexUpdatedFiles(
   const configOp = createConfigOps(database);
   
   // Get the last processed block
-  let lastProcessedBlock = await configOp.readInt(KeyLastProcessedBlockUpdatedFiles);
+  let lastProcessedBlock: number = await configOp.readInt(KeyLastProcessedBlockUpdatedFiles);
   if (_.isNil(lastProcessedBlock) || lastProcessedBlock === 0) {
     logger.info(`No '${KeyLastProcessedBlockUpdatedFiles}' config found in DB, this is the first run, get the value from chain.`);
-    lastProcessedBlock = await api.getLastProcessedBlockWorkReports();
+    lastProcessedBlock = await api.getLastProcessedBlockUpdatedFiles() as number;
     if (_.isNil(lastProcessedBlock) || lastProcessedBlock === 0) {
       logger.info(`No updated files to process on chain yet, stop for a while.`);
       return;
@@ -55,7 +55,10 @@ async function indexUpdatedFiles(
     accumulateBlockCount = 0;
     configOp.saveInt(KeyAccumulateUnProcessedBlockCount, accumulateBlockCount);
   }
-  let spowerCalculateBatchSize = config.spowerCalculateBatchSize;
+  let spowerCalculateBatchSize = config.chain.spowerCalculateBatchSize;
+  if (_.isNil(spowerCalculateBatchSize) || spowerCalculateBatchSize == 0) {
+    spowerCalculateBatchSize = defaultSpowerCalculateBatchSize;
+  }
 
   let lastBlockTime = Dayjs();
   do {
@@ -82,20 +85,17 @@ async function indexUpdatedFiles(
     try {
       for (let block = lastProcessedBlock + 1; block <= curBlock; block++) {
         // Get work reports to process from chain at the specific block
-        const updatedFilesToProcess = await api.getUpdatedFilesToProcess(block);
+        const updatedFilesToProcess: Map<string, UpdatedFileToProcess> = await api.getUpdatedFilesToProcess(block);
 
         /// -------------------------------------------------------
         /// TODO: Also retrieve FileInfoV2 data if this block is the 400th block at the report slot
-        if (updatedFilesToProcess.length > 0) {
+        if (updatedFilesToProcess.size > 0) {
           let isFileInfoV2Retrieved = false;
           accumulateBlockCount++;
           if (accumulateBlockCount >= spowerCalculateBatchSize) {
             /// Retrieve FileInfoV2 from chain if the accumulateBlockCount of this round meet the spowerCalculateBatchSize
             // Extract the updated files cid from the map
-            let cids = new Set<string>();
-            for (const updatedFile of updatedFilesToProcess) {
-              cids.add(updatedFile.cid);
-            }
+            let cids = updatedFilesToProcess.keys();
 
             // Get Non exist cids from file_info_v2 table
             const nonExistCids: string[] = await fileInfoV2Op.getNonExistCids([...cids], block);
@@ -125,9 +125,9 @@ async function indexUpdatedFiles(
         // Update the last processed block
         lastProcessedBlock = block;
         configOp.saveInt(KeyLastProcessedBlockUpdatedFiles, lastProcessedBlock);
-    }
+      }
     } catch (err) {
-      logger.error(`💥 Error to index work reports: ${err}`);
+      logger.error(`💥 Error to index updated files: ${err}`);
     } 
 
     // Sleep a while for next round

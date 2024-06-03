@@ -12,7 +12,7 @@ export function createFileInfoV2Operator(db: Database): FileInfoV2Operator {
     let insertRecordsCount = 0;
 
     for (const [cid, fileInfo] of fileInfoV2Map) {
-      const result = await db.run('insert or ingore into files_info_v2 ' + 
+      const result = await db.run('insert or ignore into files_info_v2 ' + 
             '(`cid`,`update_block`,`file_info`,`last_updated`, `create_at`)' + 
             'values (?,?,?,?,?)',
             [cid, updateBlock, JSON.stringify(fileInfo), new Date(), new Date()]

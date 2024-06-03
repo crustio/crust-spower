@@ -17,7 +17,7 @@ export function createWorkReportsToProcessOperator(db: Database): WorkReportsToP
     const result = await db.run(
           'insert or ignore into work_reports_to_process ' +
           '(`report_block`,  `work_reports`, `status`, `last_updated`, `create_at`)' +
-          ' values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          ' values (?, ?, ?, ?, ?)',
           [
             reportBlock,
             JSON.stringify(workReports),

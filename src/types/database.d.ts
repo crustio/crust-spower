@@ -56,7 +56,7 @@ export interface UpdatedFileToProcessRecord {
 }
 
 export interface UpdatedFilesToProcessOperator {
-  addUpdatedFiles: (updateBlock: number, isFileInfoV2Retrieved: boolean, updatedFiles: UpdatedFileToProcess[]) => Promise<number>;
+  addUpdatedFiles: (updateBlock: number, isFileInfoV2Retrieved: boolean, updatedFilesMap: Map<string, UpdatedFileToProcess>) => Promise<number>;
   getMinimumUnProcessedBlockWithFileInfoV2Data: () => Promise<number>;
   getPendingUpdatedFilesTillBlock: (updateBlock: number) => Promise<UpdatedFileToProcessRecord[]>;
   updateRecordsStatus: (ids: number[], status: UpdatedFileToProcessStatus) => DbWriteResult;

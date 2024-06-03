@@ -7,10 +7,10 @@ import { AppContext } from '../types/context';
 import { SimpleTask } from '../types/tasks';
 import { IsStopped, makeIntervalTask } from './task-utils';
 import { FileInfoV2, Replica, ReplicaToUpdate, UpdatedFileToProcess } from '../types/chain';
-import Bluebird from 'bluebird';
 import { createUpdatedFilesToProcessOperator } from '../db/updated-files-to-process';
 import { createFileInfoV2Operator } from '../db/files-info-v2';
 import _ from 'lodash';
+import Bluebird from 'bluebird';
 
 
 /**
@@ -31,156 +31,163 @@ async function calculateSpower(
         return;
       }
 
-      // Get the minimum update_block with is_file_info_v2_retrieved = true from the unprocessed updated_files_to_process table
-      const calculateTillBlock = await updatedFilesOp.getMinimumUnProcessedBlockWithFileInfoV2Data();
-      if (_.isNil(calculateTillBlock)) {
-        // Two possible cases:
-        // 1. No more updated files to process
-        // 2. There are some records with is_file_info_v2_retrieved = fase, we skip them for this round since they're 
-        //    either retrieved after the 400th block in this report slot, or the related file_info_v2 data is still retrieving
-        //    We dont' want to retrieve file_info_v2 data in this function to avoid time consuming
-        logger.info(`No more qualified updated blocks to process, stop for a while.`);
-        return; 
-      }
+      try {
+        // Get the minimum update_block with is_file_info_v2_retrieved = true from the unprocessed updated_files_to_process table
+        let calculateTillBlock = await updatedFilesOp.getMinimumUnProcessedBlockWithFileInfoV2Data();
+        if (_.isNil(calculateTillBlock) || calculateTillBlock == 0) {
+          // Two possible cases:
+          // 1. No more updated files to process
+          // 2. There are some records with is_file_info_v2_retrieved = fase, we skip them for this round since they're 
+          //    either retrieved after the 400th block in this report slot, or the related file_info_v2 data is still retrieving
+          //    We dont' want to retrieve file_info_v2 data in this function to avoid time consuming
+          logger.info(`No more qualified updated blocks to process, stop for a while.`);
+          return; 
+        }
 
-      // Get updated files till the specific update block
-      const updatedBlocksOfFiles = await updatedFilesOp.getPendingUpdatedFilesTillBlock(calculateTillBlock);
-      logger.info(`Round ${round} - Calculate till block: '${calculateTillBlock}' with ${updatedBlocksOfFiles.length} updated blocks to process.`);
+        // Get updated files till the specific update block
+        const updatedBlocksOfFiles = await updatedFilesOp.getPendingUpdatedFilesTillBlock(calculateTillBlock);
+        logger.info(`Round ${round} - Calculate till block: '${calculateTillBlock}' with ${updatedBlocksOfFiles.length} updated blocks to process.`);
 
-      // 1. Extrace all the updated files and their updated replicas
-      logger.debug(`1. Extrace all the updated files and their updated replicas.`);
-      let updatedFileCIDs = new Set<string>();
-      let updatedBlocks = new Set<number>();
-      let sworkerAddedReplicasMap = new Map<string, Map<string, ReplicaToUpdate>>();  // Map<SworkerAnchor, Map<CID, ReplicaToUpdate>>
-      let sworkerDeletedReplicasMap = new Map<string, Map<string, ReplicaToUpdate>>(); // Map<SworkerAnchor, Map<CID, ReplicaToUpdate>>
+        // 1. Extrace all the updated files and their updated replicas
+        logger.debug(`1. Extrace all the updated files and their updated replicas.`);
+        let updatedFileCIDs = new Set<string>();
+        let updatedBlocks = new Set<number>();
+        let sworkerAddedReplicasMap = new Map<string, Map<string, ReplicaToUpdate>>();  // Map<SworkerAnchor, Map<CID, ReplicaToUpdate>>
+        let sworkerDeletedReplicasMap = new Map<string, Map<string, ReplicaToUpdate>>(); // Map<SworkerAnchor, Map<CID, ReplicaToUpdate>>
 
-      for (const record of updatedBlocksOfFiles) {
-        // Record all the updated blocks in this batch
-        updatedBlocks.add(record.update_block);
+        for (const record of updatedBlocksOfFiles) {
+          // Record all the updated blocks in this batch
+          updatedBlocks.add(record.update_block);
 
-        const updatedFilesToProcess = JSON.parse(record.updated_files) as UpdatedFileToProcess[];
-        for (const updatedFileInfo of updatedFilesToProcess) {
-          const cid = updatedFileInfo.cid;
-          // Record the unique updated cids
-          updatedFileCIDs.add(cid);
+          const updatedFilesToProcess: Map<string, UpdatedFileToProcess> = new Map(Object.entries(JSON.parse(record.updated_files)));
+          for (const [cid, updatedFileInfo] of updatedFilesToProcess) {
+            // Record the unique updated cids
+            updatedFileCIDs.add(cid);
 
-          // Construct the sworkerAddedReplicasMap
-          for (const addedReplica of updatedFileInfo.actual_added_replicas) {
-            let fileToReplicasMap = sworkerAddedReplicasMap.get(addedReplica.sworker_anchor);
-            if (!fileToReplicasMap) {
-              fileToReplicasMap = new Map<string, ReplicaToUpdate>();
-              sworkerAddedReplicasMap.set(addedReplica.sworker_anchor, fileToReplicasMap);
+            // Construct the sworkerAddedReplicasMap
+            for (const addedReplica of updatedFileInfo.actual_added_replicas) {
+              let fileToReplicasMap = sworkerAddedReplicasMap.get(addedReplica.sworker_anchor);
+              if (!fileToReplicasMap) {
+                fileToReplicasMap = new Map<string, ReplicaToUpdate>();
+                sworkerAddedReplicasMap.set(addedReplica.sworker_anchor, fileToReplicasMap);
+              }
+              fileToReplicasMap.set(cid, addedReplica);  // There should be a unique addedReplica for SworkerAnchor + CID
             }
-            fileToReplicasMap.set(cid, addedReplica);  // There should be a unique addedReplica for SworkerAnchor + CID
-          }
-          
-          // Construct the sworkerDeletedReplicasMap
-          for (const deletedReplica of updatedFileInfo.actual_deleted_replicas) {
-            let fileToReplicasMap = sworkerDeletedReplicasMap.get(deletedReplica.sworker_anchor);
-            if (!fileToReplicasMap) {
-              fileToReplicasMap = new Map<string, ReplicaToUpdate>();
-              sworkerDeletedReplicasMap.set(deletedReplica.sworker_anchor, fileToReplicasMap);
+            
+            // Construct the sworkerDeletedReplicasMap
+            for (const deletedReplica of updatedFileInfo.actual_deleted_replicas) {
+              let fileToReplicasMap = sworkerDeletedReplicasMap.get(deletedReplica.sworker_anchor);
+              if (!fileToReplicasMap) {
+                fileToReplicasMap = new Map<string, ReplicaToUpdate>();
+                sworkerDeletedReplicasMap.set(deletedReplica.sworker_anchor, fileToReplicasMap);
+              }
+              fileToReplicasMap.set(cid, deletedReplica); // There should be a unique deletedReplica for SworkerAnchor + CID
             }
-            fileToReplicasMap.set(cid, deletedReplica); // There should be a unique deletedReplica for SworkerAnchor + CID
           }
         }
-      }
-      logger.debug(`Updated files size: ${updatedFileCIDs.size}`);
+        logger.debug(`Updated files size: ${updatedFileCIDs.size}`);
 
-      // 2. Get the filesInfoV2 data at the specific block
-      logger.debug(`2. Get the filesInfoV2 data`);
-      const fileInfoV2Map = await getFileInfoV2AtBlock(context, [...updatedFileCIDs], calculateTillBlock);
+        // 2. Get the filesInfoV2 data at the specific block
+        logger.debug(`2. Get the filesInfoV2 data`);
+        const fileInfoV2Map = await getFileInfoV2AtBlock(context, [...updatedFileCIDs], calculateTillBlock);
 
-      // 4. Calculate the new spower for all the updated files
-      logger.debug(`4. Calculate the new spower for all the updated files`);
+        // 4. Calculate the new spower for all the updated files
+        logger.debug(`4. Calculate the new spower for all the updated files`);
 
-      let fileNewSpowerMap = new Map<string, bigint>();
-      for (const [cid, fileInfoV2] of fileInfoV2Map) {
-        // Calculate the new file spower based on spower curve 
-        const newSpower = calculateFileSpower(fileInfoV2.file_size, fileInfoV2.reported_replica_count);
+        let fileNewSpowerMap = new Map<string, bigint>();
+        for (const [cid, fileInfoV2] of fileInfoV2Map) {
+          // Calculate the new file spower based on spower curve 
+          const newSpower = calculateFileSpower(BigInt(fileInfoV2.file_size), fileInfoV2.reported_replica_count);
 
-        fileNewSpowerMap.set(cid, newSpower);
-      }
+          fileNewSpowerMap.set(cid, newSpower);
+        }
 
-      // 5. Calculate the Sworker_anchor -> ChangedSpower map
-      logger.debug(`Calculate the Sworker_anchor -> ChangedSpower map`);
+        // 5. Calculate the Sworker_anchor -> ChangedSpower map
+        logger.debug(`Calculate the Sworker_anchor -> ChangedSpower map`);
 
-      let sworkerChangedSpowerMap = new Map<string, bigint>();
-      // We loop with fileInfoV2Map, if there're any missing CIDs compared to the updatedFilesMap, 
-      // we treat those files as removed on chain, we can just ignore those files as we haven't 
-      // add or delete any spower during swork.report_works for files.
-      for (const [cid, fileInfoV2] of fileInfoV2Map) {
-        const replicasMap: Map<string, Replica> = fileInfoV2.replicas;
-        for (const [_owner, replica] of replicasMap) {
-          const sworkerAnchor = replica.anchor;
-          let changedSpower = sworkerChangedSpowerMap.get(sworkerAnchor);
-          if (_.isNil(changedSpower)) {
-            changedSpower = BigInt(0);
+        let sworkerChangedSpowerMap = new Map<string, bigint>();
+        // We loop with fileInfoV2Map, if there're any missing CIDs compared to the updatedFilesMap, 
+        // we treat those files as removed on chain, we can just ignore those files as we haven't 
+        // add or delete any spower during swork.report_works for files.
+        for (const [cid, fileInfoV2] of fileInfoV2Map) {
+          const replicasMap: Map<string, Replica> = fileInfoV2.replicas;
+          for (const [_owner, replica] of replicasMap) {
+            const sworkerAnchor = replica.anchor;
+            let changedSpower = sworkerChangedSpowerMap.get(sworkerAnchor);
+            if (_.isNil(changedSpower)) {
+              changedSpower = BigInt(0);
+              sworkerChangedSpowerMap.set(sworkerAnchor, changedSpower);
+            }
+
+            // Check whether this replica is newly added by this sworker
+            const addedReplicasMap = sworkerAddedReplicasMap.get(sworkerAnchor);
+            let isAddedReplica = (!_.isNil(addedReplicasMap) && addedReplicasMap.has(cid));
+
+            // Calculate the changed power for this file
+            const newFileSpower = fileNewSpowerMap.get(cid);
+            if (isAddedReplica) {
+              // If this is the newly added replica for this sworker, old_spower is 0 (which use it sworker::report_works)
+              changedSpower += newFileSpower;
+            } else {
+              // If this is not added replica for this sworker, then it means this sworker + cid have already exist before, 
+              // so this sworker has already used the old file spower
+              changedSpower += (newFileSpower - getFileCurrentSpower(fileInfoV2));
+            }
+            
             sworkerChangedSpowerMap.set(sworkerAnchor, changedSpower);
           }
-
-          // Check whether this replica is newly added by this sworker
-          const addedReplicasMap = sworkerAddedReplicasMap.get(sworkerAnchor);
-          let isAddedReplica = (!_.isNil(addedReplicasMap) && addedReplicasMap.has(cid));
-
-          // Calculate the changed power for this file
-          const newFileSpower = fileNewSpowerMap.get(cid);
-          if (isAddedReplica) {
-            // If this is the newly added replica for this sworker, old_spower is 0 (which use it sworker::report_works)
-            changedSpower += newFileSpower;
-          } else {
-            // If this is not added replica for this sworker, then it means this sworker + cid have already exist before, 
-            // so this sworker has already used the old file spower
-            changedSpower += (newFileSpower - getFileCurrentSpower(fileInfoV2));
-          }
-          
-          sworkerChangedSpowerMap.set(sworkerAnchor, changedSpower);
         }
-      }
 
-      // 5.1 Supplement the deleted replicas to the sworkerChangedSpowerMap, since valid deleted replicas have been deleted 
-      // from the fileInfoV2Map, so this changed info are not in the sworkerChangedSpowerMap
-      for (const [sworkerAnchor, deletedReplicasMap] of sworkerDeletedReplicasMap) {
-        for (const [cid, _replica] of deletedReplicasMap) {
-          let changedSpower = sworkerChangedSpowerMap.get(sworkerAnchor);
-          if (_.isNil(changedSpower)) {
-            changedSpower = BigInt(0);
+        // 5.1 Supplement the deleted replicas to the sworkerChangedSpowerMap, since valid deleted replicas have been deleted 
+        // from the fileInfoV2Map, so this changed info are not in the sworkerChangedSpowerMap
+        for (const [sworkerAnchor, deletedReplicasMap] of sworkerDeletedReplicasMap) {
+          for (const [cid, _replica] of deletedReplicasMap) {
+            let changedSpower = sworkerChangedSpowerMap.get(sworkerAnchor);
+            if (_.isNil(changedSpower)) {
+              changedSpower = BigInt(0);
+              sworkerChangedSpowerMap.set(sworkerAnchor, changedSpower);
+            }
+
+            // File has been deleted, we need to substract its original file spower
+            const fileInfoV2 = fileInfoV2Map.get(cid);
+            if (fileInfoV2) {
+              changedSpower -= getFileCurrentSpower(fileInfoV2);
+            }
+
             sworkerChangedSpowerMap.set(sworkerAnchor, changedSpower);
           }
-
-          // File has been deleted, we need to substract its original file spower
-          const fileInfoV2 = fileInfoV2Map.get(cid);
-          if (fileInfoV2) {
-            changedSpower -= getFileCurrentSpower(fileInfoV2);
-          }
-
-          sworkerChangedSpowerMap.set(sworkerAnchor, changedSpower);
         }
-      }
+        
+        // 6. Update the chain data with sworkerChangedSpowerMap, fileNewSpowerMap, updatedBlocks
+        logger.debug(`sworkerChangedSpowerMap: ${JSON.stringify(sworkerChangedSpowerMap)}`);
+        logger.debug(`fileNewSpowerMap: ${JSON.stringify(fileNewSpowerMap)}`);
+        logger.debug(`updatedBlocks: ${JSON.stringify(updatedBlocks)}`);
+        const result = await api.updateSpower(sworkerChangedSpowerMap, fileNewSpowerMap, updatedBlocks);
+
+        // 7. Update db status
+        logger.debug(`Update related updated_files_to_process records to 'processed' status`);
+        let ids = updatedBlocksOfFiles.map((record)=>record.id);
+        if (result === true) {
+          updatedFilesOp.updateRecordsStatus(ids, 'processed');
+        } else {
+          updatedFilesOp.updateRecordsStatus(ids, 'failed');
+        }
+
+        // Update the new fileInfoV2Map no matter whether the api.updateSpower is success or not
+        // These updated data can be used directly in the next round
+        const newSpowerUpdateBlock = _.max([...updatedBlocks]);
+        logger.debug(`Update the up-to-date fileInfoV2Map on block '${newSpowerUpdateBlock}' to file_info_v2 table`);
+        const fileInfoV2InsertCount = await fileInfoV2Op.add(fileInfoV2Map, newSpowerUpdateBlock);
+        logger.info(`Upsert ${fileInfoV2Map.size} files at block '${newSpowerUpdateBlock}' to file_info_v2 table: New - ${fileInfoV2InsertCount}, Existing: ${fileInfoV2Map.size-fileInfoV2InsertCount}`);
+
+        round++;
+      } catch (err) {
+        logger.error(`💥 Error to calculate spower: ${err}`);
+      } 
       
-      // 6. Update the chain data with sworkerChangedSpowerMap, fileNewSpowerMap, updatedBlocks
-      logger.debug(`sworkerChangedSpowerMap: ${sworkerChangedSpowerMap}`);
-      logger.debug(`fileNewSpowerMap: ${fileNewSpowerMap}`);
-      logger.debug(`updatedBlocks: ${updatedBlocks}`);
-      const result = await api.updateSpower(sworkerChangedSpowerMap, fileNewSpowerMap, updatedBlocks);
+      // Sleep a while for next round
+      await Bluebird.delay(1 * 1000);
 
-      // 7. Update db status
-      logger.debug(`Update related updated_files_to_process records to 'processed' status`);
-      let ids = updatedBlocksOfFiles.map((record)=>record.id);
-      if (result === true) {
-        updatedFilesOp.updateRecordsStatus(ids, 'processed');
-      } else {
-        updatedFilesOp.updateRecordsStatus(ids, 'failed');
-      }
-
-      // Update the new fileInfoV2Map no matter whether the api.updateSpower is success or not
-      // These updated data can be used directly in the next round
-      const newSpowerUpdateBlock = _.max([...updatedBlocks]);
-      logger.debug(`Update the up-to-date fileInfoV2Map on block '${newSpowerUpdateBlock}' to file_info_v2 table`);
-      const fileInfoV2InsertCount = await fileInfoV2Op.add(fileInfoV2Map, newSpowerUpdateBlock);
-      logger.info(`Upsert ${fileInfoV2Map.size} files at block '${newSpowerUpdateBlock}' to file_info_v2 table: New - ${fileInfoV2InsertCount}, Existing: ${fileInfoV2Map.size-fileInfoV2InsertCount}`);
-
-      round++;
     } while(true);
 }
 
@@ -202,7 +209,12 @@ async function getFileInfoV2AtBlock(
     const fileInfoV2List = await fileInfoV2Op.getFileInfoV2AtBlock(cidInBatch, updateBlock);
 
     for (const record of fileInfoV2List){
-      let fileInfoV2: FileInfoV2 = JSON.parse(record.file_info) as FileInfoV2;
+      let fileInfoV2: FileInfoV2 = JSON.parse(record.file_info, (key, value) => {
+        if (key === 'replicas') {
+          return new Map(Object.entries(value));
+        }
+        return value;
+      });
       fileInfoV2Map.set(record.cid, fileInfoV2);
     }
   }

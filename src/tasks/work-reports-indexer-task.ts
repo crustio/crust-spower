@@ -27,10 +27,10 @@ async function indexWorkReports(
   const workReportsOp = createWorkReportsToProcessOperator(database);
   
   // Get the last processed block
-  let lastProcessedBlock = await configOp.readInt(KeyLastProcessedBlockWrs);
+  let lastProcessedBlock: number = await configOp.readInt(KeyLastProcessedBlockWrs);
   if (_.isNil(lastProcessedBlock) || lastProcessedBlock === 0) {
     logger.info(`No '${KeyLastProcessedBlockWrs}' config found in DB, this is the first run, get the value from chain.`);
-    lastProcessedBlock = await api.getLastProcessedBlockWorkReports();
+    lastProcessedBlock = await api.getLastProcessedBlockWorkReports() as number;
     if (_.isNil(lastProcessedBlock) || lastProcessedBlock === 0) {
       logger.info(`No work reports to process on chain yet, stop for a while.`);
       return;
@@ -49,7 +49,7 @@ async function indexWorkReports(
     }
 
     await api.ensureConnection();
-    const curBlock = api.latestFinalizedBlock();
+    const curBlock: number = api.latestFinalizedBlock();
     if (lastProcessedBlock >= curBlock) {
       const now = Dayjs();
       const diff = Dayjs.duration(now.diff(lastBlockTime));

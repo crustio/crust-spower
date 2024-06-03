@@ -12,6 +12,7 @@ import { FileToUpdate, ReplicaToUpdate, WorkReportsToProcess } from '../types/ch
 import { stringToHex } from '../utils';
 import _ from 'lodash';
 
+const defaultBatchSize = 15; // Batch size in blocks
 /**
  * main entry funciton for the task
  */
@@ -27,7 +28,10 @@ async function processWorkReports(
   // Right now there're around 1600 sworker nodes in the whole chain, 1600 work reports will be sent 
   // from the 10th to 399th block in one slot, that means 1600 wrs in 390 blocks, average 4~5 wrs/block
   // 15 blocks will have around 75 work reports
-  const batchSize = config.workReportsProcesserBatchSize;
+  let batchSize = config.chain.workReportsProcesserBatchSize;
+  if (_.isNil(batchSize) || batchSize <=0) {
+    batchSize = defaultBatchSize;
+  }
   let round = 1;
 
   do {
@@ -55,8 +59,8 @@ async function processWorkReports(
         for (const wr of workReports) {
           let { added_files, deleted_files } = wr;
 
-          const added_files_array: [] = JSON.parse(added_files);
-          const deleted_files_array: [] = JSON.parse(deleted_files);
+          const added_files_array: [] = _.isNil(added_files) ? [] : added_files;
+          const deleted_files_array: [] = _.isNil(deleted_files) ? [] : deleted_files;
           createFileReplicas(filesInfoMap, wr, added_files_array, true);
           createFileReplicas(filesInfoMap, wr, deleted_files_array, false);
 
