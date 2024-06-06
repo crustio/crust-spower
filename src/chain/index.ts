@@ -9,9 +9,10 @@ import { logger } from '../utils/logger';
 import { UnsubscribePromise, VoidFn } from '@polkadot/api/types';
 import { SubmittableExtrinsic } from '@polkadot/api/promise/types';
 import Bluebird from 'bluebird';
-import { UpdatedFileToProcess, TxRes, WorkReportsToProcess, FileToUpdate, FileInfoV2 } from '../types/chain';
+import { UpdatedFileToProcess, TxRes, WorkReportsToProcess, FileToUpdate, FileInfoV2, ChangedFileInfo } from '../types/chain';
 import { timeout } from '../utils/promise-utils';
 import {ITuple} from '@polkadot/types/types';
+import { SPowerConfig } from '../types/spower-config';
 
 export type Identity = typeof crustTypes.swork.types.Identity;
 // export type FileInfoV2 = typeof crustTypes.market.types.FileInfoV2;
@@ -19,12 +20,6 @@ export type Identity = typeof crustTypes.swork.types.Identity;
 
 // TODO: Move the definition to crust.js lib
 const customTypes = {
-  WorkReportMetadata: {
-    report_block: 'BlockNumber',
-    extrinsic_index: 'u32',
-    reporter: 'AccountId',
-    owner: 'AccountId'
-  },
   ReplicaToUpdate: {
     reporter: 'AccountId',
     owner: 'AccountId',
@@ -38,8 +33,7 @@ const customTypes = {
     cid: 'MerkleRoot',
     actual_added_replicas: 'Vec<ReplicaToUpdate<AccountId>>',
     actual_deleted_replicas: 'Vec<ReplicaToUpdate<AccountId>>'
-  },
-  DispathErrorModule: 'DispatchErrorModuleU8'
+  }
 }
 
 export default class CrustApi {
@@ -50,14 +44,17 @@ export default class CrustApi {
   private latestBlock = 0;
   private subLatestHead: VoidFn = null;
   private txLocker = {market: false, swork: false};
+  private config: SPowerConfig;
 
-  constructor(addr: string, chainAccount: string, backup: string, password: string) {
-    this.addr = addr;
-    this.chainAccount = chainAccount;
+  constructor(config: SPowerConfig) {
+    this.config = config;
+
+    this.addr = config.chain.endPoint;
+    this.chainAccount = config.chain.account;
 
     const kr = new Keyring({ type: 'sr25519' });
-    this.krp = kr.addFromJson(JSON.parse(backup));
-    this.krp.decodePkcs8(password);
+    this.krp = kr.addFromJson(JSON.parse(config.chain.backup));
+    this.krp.decodePkcs8(config.chain.password);
   }
 
   async initApi(): Promise<void> {
@@ -317,7 +314,7 @@ export default class CrustApi {
           const extrinsic = exs[exIdx];
           // Check the sworker::report_works extrinsic call arguments structure
           const { method: { args } } = extrinsic;
-          const reportSlot = args[2];
+          const report_slot = args[2];
           const reported_srd_size = args[4];
           const reported_files_size = args[5];
           const added_files = args[6];
@@ -330,7 +327,7 @@ export default class CrustApi {
 
           let workReport = {
               sworker_anchor: sworkerAnchor.toString(),
-              report_slot: reportSlot,
+              report_slot: report_slot,
               report_block: atBlock,
               extrinsic_index: exIdx,
               reporter: reporter.toString(),
@@ -356,56 +353,82 @@ export default class CrustApi {
     }
   }
 
-   async getLastProcessedBlockUpdatedFiles(): Promise<number> {
+   async getLastReplicasUpdateBlock(): Promise<number> {
     await this.withApiReady();
     
-    const block = await this.api.query.market.lastProcessedBlockUpdatedFiles();
+    const block = await this.api.query.market.lastReplicasUpdateBlock();
     if (_.isNil(block) || block.isEmpty) {
       return 0;
     }
     return parseInt(block as any);   
   }
   
-  async getUpdatedFilesToProcess(atBlock: number): Promise<Map<string, UpdatedFileToProcess>> {
-
+  async getReplicasUpdatedFiles(atBlock: number): Promise<string[]> {
     let startTime = performance.now();
-    logger.info(`Start to get updated files from chain`);
+    logger.info(`Start to get replicas updated files from chain`);
+    await this.withApiReady();
+    try {
+      const hash = await this.getBlockHash(atBlock);
+      const block = await this.api.rpc.chain.getBlock(hash);
+      const exs: Extrinsic[] = block.block.extrinsics;
+      const events: EventRecord[] = await this.api.query.system.events.at(hash);
+
+      let cids = [];
+      for (const {event: { method },phase} of events) {
+        if (method === 'UpdateReplicasSuccess') {
+          // There is a successful market::update_replicas extrinsic call in this block
+          // Get the corresponding extrinsic data
+          const exIdx = phase.asApplyExtrinsic.toNumber();
+          const extrinsic = exs[exIdx];
+          // Check the market::update_replicas extrinsic call arguments structure
+          const { method: { args } } = extrinsic;
+          const file_infos_map = args[0] as any; // as [[string, bigint, []]]
+          for (const [cid, _file_size, _replicas_to_update] of file_infos_map) {
+            // TBD: hexToString(rawCid.toString());?
+            cids.push(cid);
+          }
+        }
+      }
+
+      logger.info(`Get ${cids.length} updated files to process at block '${atBlock}'`);
+      return cids;
+    } catch (err) {
+      logger.error(`💥 Error to get replicas updated files from chain: ${err}`);
+      throw err;
+    } finally {
+      let endTime = performance.now();
+      logger.info(`End to get replicas updated files from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+    }
+  }
+
+  async getClosedFiles(atBlock: number): Promise<string[]> {
+    let startTime = performance.now();
+    logger.info(`Start to get closed files from chain`);
     await this.withApiReady();
     try {
       const hash = await this.getBlockHash(atBlock);
       const events: EventRecord[] = await this.api.query.system.events.at(hash);
 
-      let updatedFilesMap = new Map<string, UpdatedFileToProcess>();
-      for (const {event: { method }} of events) {
-        if (method === 'UpdateReplicasSuccess') {
-          // There is a successful market::update_replicas extrinsic call in this block
-          // Get the UpdatedFilesToProcess with this block number
-          const updatedFilesToProcessAtBlock = await this.api.query.market.updatedFilesToProcessV2.at(hash, atBlock);
-          if (!updatedFilesToProcessAtBlock.isEmpty) {
-            let rawMap = updatedFilesToProcessAtBlock as any;
-            for (const [key, value] of rawMap) {
-              // The key is cid bytes array
-              const cid = hexToString(key.toString());
-              const updatedFileInfo = JSON.parse(value) as UpdatedFileToProcess;
-              updatedFilesMap.set(cid, updatedFileInfo);
-            }
-            // It's a Map<updateBlock, Map<cid, UpdatedFileInfo>> structure on chain, so all entries for this block 
-            // are at the same key, so we can just break here
-            break;
-          }
+      let cids = [];
+      for (const {event: { data, method }} of events) {
+        if (method === 'FileClosed' || method === 'IllegalFileClosed') {
+          // Get data from the event body
+          const cid = hexToString(data[0].toString());
+          cids.push(cid);
         }
       }
 
-      logger.info(`Get ${updatedFilesMap.size} updated files to process at block '${atBlock}'`);
-      return updatedFilesMap;
+      logger.info(`Get ${cids.length} closedd files to process at block '${atBlock}'`);
+      return cids;
     } catch (err) {
-      logger.error(`💥 Error to get updated files from chain: ${err}`);
+      logger.error(`💥 Error to get closed files from chain: ${err}`);
       throw err;
     } finally {
       let endTime = performance.now();
-      logger.info(`End to get updated files from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+      logger.info(`End to get closed from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
   }
+  
 
   async getFilesInfoV2(cids: string[], atBlock: number): Promise<Map<string, FileInfoV2>> {
 
@@ -413,19 +436,27 @@ export default class CrustApi {
     logger.info(`Start to get files info v2 from chain`);
     await this.withApiReady();
     try {
-      //const apiAt = await this.api.at(await this.getBlockHash(at_block));
       const blockHash = await this.getBlockHash(atBlock);
-      /// ----------------------------------------------------
-      /// TODO: Implement a batch query runtime API later and get data in batch instead of one by one for better performance
-      let fileInfoV2Map = new Map<string, FileInfoV2>();
-      for (const cid of cids) {
-        const fileInfoV2FromChain = await this.api.query.market.filesV2.at(blockHash, cid);
-        logger.debug(`fileInfoV2FromChain: ${JSON.stringify(fileInfoV2FromChain)}`);
 
-        let fileInfoV2 = fileInfoV2FromChain as any as FileInfoV2;
-        fileInfoV2Map.set(cid, fileInfoV2);
+      // Generate the related storage keys
+      let storageKeys = [];
+      for (const cid of cids) {
+        storageKeys.push(this.api.query.market.filesV2.key(cid));
       }
 
+      // Retrieve the FilesInfoV2 data from chain in batch
+      let fileInfoV2Map = new Map<string, FileInfoV2>();
+      const batchSize = this.config.chain.filesV2SyncBatchSize;
+      logger.debug(`Total files count need to query: ${storageKeys.length}, query in batch size: ${batchSize}`);
+      for (let i = 0; i < storageKeys.length; i += batchSize) {
+        const storageKeysInBatch = storageKeys.slice(i, i + batchSize);
+        logger.debug(`Batch ${i+1}: ${storageKeysInBatch.length} files`);
+
+        const fileInfoV2MapFromChain = await this.api.rpc.state.queryStorageAt(storageKeys, blockHash);
+
+        fileInfoV2Map = fileInfoV2MapFromChain as any as Map<string, FileInfoV2>;
+      }
+     
       return fileInfoV2Map;
     } catch (err) {
       logger.error(`💥 Error to get files info v2 from chain: ${err}`);
@@ -492,11 +523,10 @@ export default class CrustApi {
 
   async updateSpower(
     sworkerChangedSpowerMap: Map<string, bigint>,
-    fileNewSpowerMap: Map<string, bigint>,
-    updatedBlocks: Set<number>,
-    ): Promise<boolean> {
-    if (_.isNil(sworkerChangedSpowerMap) || _.isNil(fileNewSpowerMap) || _.isNil(updatedBlocks)) {
-      return false;
+    filesChangedMap: Map<string, ChangedFileInfo>,
+    ): Promise<[boolean,number]> {
+    if (_.isNil(sworkerChangedSpowerMap) || _.isNil(filesChangedMap)) {
+      return [false, null];
     }
 
     let startTime = performance.now();
@@ -504,25 +534,30 @@ export default class CrustApi {
 
     await this.withApiReady();
     try {
+      // Construct the file_changed_map argument body, the argument type is as follows on chain:
+      //    Map<cid, (file_size, Map<owner, (who, anchor, created_at)>)>
+      let fileChangedMapBody = new Map<string, any[]>();
+      for (const [cid, changedFileInfo] of filesChangedMap) {
+        let replicaMap = new Map<string, any[]>();
+        for (const [owner, replica] of changedFileInfo.replicas) {
+          replicaMap.set(owner, [replica.who, replica.anchor, replica.created_at]);
+        }
+        fileChangedMapBody.set(cid, [changedFileInfo.spower, replicaMap]);
+      };
+
       // Construct the transaction object
-      const tx = this.api.tx.swork.updateSpower(sworkerChangedSpowerMap, fileNewSpowerMap, [...updatedBlocks]); 
+      const tx = this.api.tx.swork.updateSpower(sworkerChangedSpowerMap, fileChangedMapBody); 
 
       // Send the transaction
       let txRes = queryToObj(await this.handleTxWithLock('swork', async () => this.sendTx(tx)));
       txRes = txRes ? txRes : {status:'failed', details: 'Null txRes'};
       if (txRes.status == 'success') {
         logger.info(`Update spower data to chain successfully`);
-        return true;
+        return [true, txRes.blockNumber];
       }
       else {
         logger.error(`Failled to update spower data to chain: ${txRes.details}`);
-        if (txRes.message == 'swork.ExpiredSpowerUpdateBlock') {
-          logger.warn(`Error code is swork.ExpiredSpowerUpdateBlock, this may be due to network intermittent and 
-                       lead to chain processed success but crust-spower service not updated the status. We treat this 
-                       scenario as success!`);
-          return true;
-        }
-        return false;
+        return [false, txRes.blockNumber];
       }
     } catch (err) {
       logger.error(`💥 Error to update spower data to chain: ${err}`);
@@ -531,7 +566,7 @@ export default class CrustApi {
       logger.info(`End to update spower data to chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
-    return false;
+    return [false, null];
   }
 
   private async handleTxWithLock(lockName: string, handler: Function) {
@@ -585,15 +620,22 @@ export default class CrustApi {
               result.details = error.documentation.join('');
             }
 
-            logger.info(`  ↪ 💸 ❌ [tx]: Send transaction(${tx.type}) failed with ${result.message}`);
-            resolve(result);
+            this.api.rpc.chain.getHeader(status.asFinalized).then(header => {
+              result.blockNumber = header.number.toNumber();
+              logger.info(`  ↪ 💸 ❌ [tx]: Send transaction(${tx.type}) failed with ${result.message}`);
+              resolve(result);
+            });
+            
           } else if (method === 'ExtrinsicSuccess') {
             const result: TxRes = {
               status: 'success',
             };
 
-            logger.info(`  ↪ 💸 ✅ [tx]: Send transaction(${tx.type}) success.`);
-            resolve(result);
+            this.api.rpc.chain.getHeader(status.asFinalized).then(header => {
+              result.blockNumber = header.number.toNumber();
+              logger.info(`  ↪ 💸 ✅ [tx]: Send transaction(${tx.type}) success.`);
+              resolve(result);
+            });
           }
         });
         } else {

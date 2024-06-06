@@ -7,7 +7,12 @@ const chainConfigSchema = Joi.object().keys({
   endPoint: Joi.string().required(),
   backup: Joi.string().required(),
   password: Joi.string().required(),
+  workReportsProcessorInterval: Joi.number().required(),
   workReportsProcesserBatchSize: Joi.number().required(),
+  filesV2SyncBatchSize: Joi.number().required(),
+  filesV2IndexAllKeyBatchSize: Joi.number().required(),
+  filesV2IndexChangedSyncInterval: Joi.number().required(),
+  spowerReadyPeriod: Joi.number().required(),
   spowerCalculateBatchSize: Joi.number().required(),
 });
 

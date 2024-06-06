@@ -3,6 +3,7 @@ import dayjs from 'dayjs';
 import BigNumber from 'bignumber.js';
 import seedrandom from 'seedrandom';
 import Bluebird from 'bluebird';
+import { REPORT_SLOT } from './consts';
 
 export const sleep = (t: number): Promise<void> => Bluebird.delay(t);
 
@@ -118,4 +119,9 @@ export function toQuotedList<T>(status: T[]): string {
 // eslint-disable-next-line
 export function formatError(e: any): string {
   return (e as Error).stack || JSON.stringify(e);
+}
+
+export function convertBlockNumberToReportSlot(blockNumber: number): number {
+  let reportIndex = blockNumber / REPORT_SLOT;
+  return reportIndex * REPORT_SLOT;
 }

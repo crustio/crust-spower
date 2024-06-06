@@ -93,7 +93,7 @@ export async function createWorkReportsIndexer(
   loggerParent: Logger,
 ): Promise<SimpleTask> {
   // TODO: make it configurable
-  const processInterval = 10 * 1000;  // default is 5 minutes
+  const processInterval = 10 * 1000;
   return makeIntervalTask(
     1 * 1000,
     processInterval,

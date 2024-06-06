@@ -1,5 +1,6 @@
 import { Dayjs } from 'dayjs';
 import { WorkReportsToProcess } from './chain';
+import { AppContext } from './context';
 
 type DbResult<T> = Promise<T | null>;
 type DbWriteResult = Promise<void>;
@@ -39,42 +40,36 @@ export interface WorkReportsToProcessRecord {
 
 export interface WorkReportsToProcessOperator {
   addWorkReports: (reportBlock: number, workReports: WorkReportsToProcess[]) => Promise<number>;
-  getPendingWorkReports: (count: number) => Promise<WorkReportsToProcessRecord[]>;
+  getPendingWorkReports: (count: number, beforeBlock: number) => Promise<WorkReportsToProcessRecord[]>;
   updateStatus: (ids: number[], status: WorkReportsProcessStatus) => DbWriteResult;
 }
 
-/// updated_files_to_process table
-type UpdatedFileToProcessStatus = 'new' | 'processed' | 'failed';
-
-export interface UpdatedFileToProcessRecord {
-  id: number;
-  update_block: number;
-  updated_files: string;
-  status: WorkReportsProcessStatus;
-  last_updated: Date;
-  create_at: Date;
-}
-
-export interface UpdatedFilesToProcessOperator {
-  addUpdatedFiles: (updateBlock: number, isFileInfoV2Retrieved: boolean, updatedFilesMap: Map<string, UpdatedFileToProcess>) => Promise<number>;
-  getMinimumUnProcessedBlockWithFileInfoV2Data: () => Promise<number>;
-  getPendingUpdatedFilesTillBlock: (updateBlock: number) => Promise<UpdatedFileToProcessRecord[]>;
-  updateRecordsStatus: (ids: number[], status: UpdatedFileToProcessStatus) => DbWriteResult;
-}
-
-/// file_info_v2 table
-
-export interface FileInfoV2Record {
-  id: number;
+/// files_v2 table
+export interface FilesV2Record {
   cid: string;
   file_info: string;
-  update_block: number;
+  last_sync_block: number;
+  last_sync_time: Date;
+  need_sync: boolean;
+  is_closed: boolean;
+  last_spower_update_block: number;
+  last_spower_update_time: Date;
+  next_spower_update_block: number;
+  is_spower_updating: boolean;
   last_updated: Date;
   create_at: Date;
 }
 
-export interface FileInfoV2Operator {
-  add: (fileInfoV2Map: Map<string, FileInfoV2>, updateBlock: number) => Promise<number>;
-  getFileInfoV2AtBlock: (cids: string[], updateBlock: number) => Promise<FileInfoV2Record[]>;
-  getNonExistCids: (cids: string[], updateBlock: number) => Promise<string[]>;
+export interface FilesV2Operator {
+  upsertFilesV2: (fileInfoV2Map: Map<string, FileInfoV2>, syncBlock: number, context: AppContext) => Promise<[number, number]>;
+  upsertNeedSync: (cids: string[]) => Promise<[number, number]>;
+  setIsClosed: (cids: string[], currBlock: number) => Promise<number>;
+  getNeedSync: (count: number) => Promise<string[]>;
+  getNeedSpowerUpdateRecords: (count: number, currBlock: number) => Promise<FilesV2Record[]>;
+  deleteRecords: (cids: string[]) => Promise<number>;
+  updateRecords: (records: FilesV2Record[]) => Promise<number>;
+  insertRecords: (records: FilesV2Record[]) => Promise<number>;
+  getExistingCids: (cids: string[]) => Promise<string[]>;
+  setIsSpowerUpdating: (cids: string[]) => Promise<number>;
+  clearIsSpowerUpdating: () => Promise<number>;
 }

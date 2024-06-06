@@ -4,7 +4,7 @@ import { SimpleTask } from '../types/tasks';
 import { createChildLogger } from '../utils/logger';
 import { createWorkReportsIndexer } from './work-reports-indexer-task';
 import { createWorkReportsProcessor } from './work-reports-processor-task';
-import { createUpdatedFilesIndexer } from './updated-files-indexer-task';
+import { createFilesV2Indexer } from './files-v2-indexer-task';
 import { createSpowerCalculator } from './spower-calculator-task';
 
 /**
@@ -17,7 +17,7 @@ export async function createSimpleTasks(
   const tasks = [
     createWorkReportsIndexer,
     createWorkReportsProcessor,
-    createUpdatedFilesIndexer,
+    createFilesV2Indexer,
     createSpowerCalculator
   ];
   return Bluebird.mapSeries(tasks, (t) => {

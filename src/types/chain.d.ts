@@ -33,6 +33,7 @@ export interface TxRes {
   status?: string;
   message?: string;
   details?: string;
+  blockNumber?: number;
 }
 
 export interface UpdatedFileToProcess {
@@ -60,3 +61,8 @@ export interface Replica {
   is_reported: boolean;
   created_at: number;
 };
+
+export interface ChangedFileInfo {
+  spower: bigint;
+  replicas: Map<string, Replica>;
+}

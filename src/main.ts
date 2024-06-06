@@ -101,7 +101,7 @@ async function startChain(config: SPowerConfig) {
     config.chain.endPoint,
     config.chain.account,
   );
-  const chainApi = new CrustApi(config.chain.endPoint, config.chain.account, config.chain.backup, config.chain.password);
+  const chainApi = new CrustApi(config);
   await chainApi.initApi();
   return chainApi;
 }

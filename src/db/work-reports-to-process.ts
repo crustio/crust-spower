@@ -32,10 +32,11 @@ export function createWorkReportsToProcessOperator(db: Database): WorkReportsToP
 
   const getPendingWorkReports = async (
     count: number,
+    beforeBlock: number
   ): Promise<WorkReportsToProcessRecord[]> => {
     return await db.all(
       `select * from work_reports_to_process 
-      where status in ('new', 'failed') order by report_block asc limit ${count}`
+      where status in ('new', 'failed') and report_block <= ${beforeBlock} order by report_block asc limit ${count}`
     );
   };
 
