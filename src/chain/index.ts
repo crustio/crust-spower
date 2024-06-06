@@ -9,7 +9,7 @@ import { logger } from '../utils/logger';
 import { UnsubscribePromise, VoidFn } from '@polkadot/api/types';
 import { SubmittableExtrinsic } from '@polkadot/api/promise/types';
 import Bluebird from 'bluebird';
-import { UpdatedFileToProcess, TxRes, WorkReportsToProcess, FileToUpdate, FileInfoV2, ChangedFileInfo } from '../types/chain';
+import { TxRes, WorkReportsToProcess, FileToUpdate, FileInfoV2, ChangedFileInfo } from '../types/chain';
 import { timeout } from '../utils/promise-utils';
 import {ITuple} from '@polkadot/types/types';
 import { SPowerConfig } from '../types/spower-config';
@@ -298,15 +298,14 @@ export default class CrustApi {
   async getWorkReportsToProcess(atBlock: number): Promise<WorkReportsToProcess[]> {
 
     let startTime = performance.now();
-    logger.info(`Start to get work reports from chain`);
     await this.withApiReady();
+    let workReportsToProcess = [];
     try {
       const hash = await this.getBlockHash(atBlock);
       const block = await this.api.rpc.chain.getBlock(hash);
       const exs: Extrinsic[] = block.block.extrinsics;
       const events: EventRecord[] = await this.api.query.system.events.at(hash);
 
-      let workReportsToProcess = [];
       for (const {event: { data, method },phase} of events) {
         if (method === 'QueueWorkReportSuccess') {
           // Get the corresponding extrinsic data
@@ -341,16 +340,14 @@ export default class CrustApi {
           workReportsToProcess.push(workReport);
         }
       }
-
-      logger.info(`Get ${workReportsToProcess.length} Work Reports to process at block '${atBlock}'`);
-      return workReportsToProcess;
     } catch (err) {
       logger.error(`💥 Error to query work reports from chain: ${err}`);
-      return [];
     } finally {
       let endTime = performance.now();
-      logger.info(`End to get work reports from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+      logger.info(`End to get ${workReportsToProcess.length} work reports from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
+    
+    return workReportsToProcess;
   }
 
    async getLastReplicasUpdateBlock(): Promise<number> {
@@ -365,15 +362,14 @@ export default class CrustApi {
   
   async getReplicasUpdatedFiles(atBlock: number): Promise<string[]> {
     let startTime = performance.now();
-    logger.info(`Start to get replicas updated files from chain`);
     await this.withApiReady();
+    let cids = [];
     try {
       const hash = await this.getBlockHash(atBlock);
       const block = await this.api.rpc.chain.getBlock(hash);
       const exs: Extrinsic[] = block.block.extrinsics;
       const events: EventRecord[] = await this.api.query.system.events.at(hash);
 
-      let cids = [];
       for (const {event: { method },phase} of events) {
         if (method === 'UpdateReplicasSuccess') {
           // There is a successful market::update_replicas extrinsic call in this block
@@ -389,27 +385,25 @@ export default class CrustApi {
           }
         }
       }
-
-      logger.info(`Get ${cids.length} updated files to process at block '${atBlock}'`);
-      return cids;
     } catch (err) {
       logger.error(`💥 Error to get replicas updated files from chain: ${err}`);
       throw err;
     } finally {
       let endTime = performance.now();
-      logger.info(`End to get replicas updated files from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+      logger.info(`End to get ${cids.length} updated files from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
+
+    return cids;
   }
 
   async getClosedFiles(atBlock: number): Promise<string[]> {
     let startTime = performance.now();
-    logger.info(`Start to get closed files from chain`);
     await this.withApiReady();
+    let cids = [];
     try {
       const hash = await this.getBlockHash(atBlock);
       const events: EventRecord[] = await this.api.query.system.events.at(hash);
 
-      let cids = [];
       for (const {event: { data, method }} of events) {
         if (method === 'FileClosed' || method === 'IllegalFileClosed') {
           // Get data from the event body
@@ -417,24 +411,23 @@ export default class CrustApi {
           cids.push(cid);
         }
       }
-
-      logger.info(`Get ${cids.length} closedd files to process at block '${atBlock}'`);
-      return cids;
     } catch (err) {
       logger.error(`💥 Error to get closed files from chain: ${err}`);
       throw err;
     } finally {
       let endTime = performance.now();
-      logger.info(`End to get closed from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+      logger.info(`End to get ${cids.length} closed files from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
+
+    return cids;
   }
   
 
   async getFilesInfoV2(cids: string[], atBlock: number): Promise<Map<string, FileInfoV2>> {
 
     let startTime = performance.now();
-    logger.info(`Start to get files info v2 from chain`);
     await this.withApiReady();
+    let fileInfoV2Map = new Map<string, FileInfoV2>();
     try {
       const blockHash = await this.getBlockHash(atBlock);
 
@@ -445,7 +438,6 @@ export default class CrustApi {
       }
 
       // Retrieve the FilesInfoV2 data from chain in batch
-      let fileInfoV2Map = new Map<string, FileInfoV2>();
       const batchSize = this.config.chain.filesV2SyncBatchSize;
       logger.debug(`Total files count need to query: ${storageKeys.length}, query in batch size: ${batchSize}`);
       for (let i = 0; i < storageKeys.length; i += batchSize) {
@@ -456,15 +448,15 @@ export default class CrustApi {
 
         fileInfoV2Map = fileInfoV2MapFromChain as any as Map<string, FileInfoV2>;
       }
-     
-      return fileInfoV2Map;
     } catch (err) {
       logger.error(`💥 Error to get files info v2 from chain: ${err}`);
       throw err;
     } finally {
       let endTime = performance.now();
-      logger.info(`End to get files info v2 from chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+      logger.info(`End to get ${fileInfoV2Map.size} files info v2 from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
+
+    return fileInfoV2Map;
   }
 
   async updateReplicas(filesInfoMap: Map<string, FileToUpdate>, lastProcessedBlockWrs: number): Promise<boolean> {
@@ -474,8 +466,6 @@ export default class CrustApi {
     }
 
     let startTime = performance.now();
-    logger.info(`Start to update replicas data to chain`);
-
     await this.withApiReady();
     try {
       // Construct the transaction body data
@@ -530,8 +520,6 @@ export default class CrustApi {
     }
 
     let startTime = performance.now();
-    logger.info(`Start to update spower data to chain`);
-
     await this.withApiReady();
     try {
       // Construct the file_changed_map argument body, the argument type is as follows on chain:

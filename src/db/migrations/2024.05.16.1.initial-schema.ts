@@ -22,10 +22,7 @@ export const up: MigrationFn<QueryInterface> = async ({
   });
 
   await createWorkReportsToProcessTable(sequelize);
-  // await createUpdatedFilesToProcessTable(sequelize);
-  // await createFilesInfoV2Table(sequelize);
   await createFilesV2Table(sequelize);
-  await createFilesV2ReplicasTables(sequelize);
 };
 
 export const down: MigrationFn<QueryInterface> = async ({

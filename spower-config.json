@@ -9,7 +9,7 @@
     "filesV2SyncBatchSize":"300",
     "filesV2IndexAllKeyBatchSize": "600",
     "filesV2IndexChangedSyncInterval": "10",
-    "spowerReadyPeriod": "100",
+    "spowerReadyPeriod": "10",
     "spowerCalculateBatchSize": "1"
   },
   "telemetry": {
