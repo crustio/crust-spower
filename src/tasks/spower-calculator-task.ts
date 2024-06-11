@@ -268,7 +268,7 @@ async function calculateSpower(
         logger.debug(`Call swork.update_spower: \n 
                         changed sworkers count - ${sworkerChangedSpowerMap.size} \n
                         changed files count - ${filesChangedMap.size}`);
-        const [result, updateBlock] = await api.updateSpower(sworkerChangedSpowerMap, filesChangedMap);
+        const result = await api.updateSpower(sworkerChangedSpowerMap, filesChangedMap);
 
         // 5. Update db status
         if (result === true) {
@@ -278,28 +278,31 @@ async function calculateSpower(
           throw new Error('!!!!!!Test error: swork.update_spower success but client update failed');
 
 
-          // 5.1 Delete is_closed records
+          // 5.1 Get last spower update block from chain
+          const newLastSpowerUpdateBlock = await api.getLastSpowerUpdateBlock();
+
+          // 5.2 Delete is_closed records
           if (toDeleteCids.length > 0) {
             logger.debug(`Delete ${toDeleteCids.length} records from files-v2 table`);
             await filesV2Op.deleteRecords(toDeleteCids);
           }
 
-          // 5.2 Update existing record data, which contains the updated file_inf)
+          // 5.3 Update existing record data, which contains the updated file_inf)
           if (toUpdateRecords.length > 0) {
             logger.debug(`Update ${toUpdateRecords.length} records in files-v2 table`);
             for (const record of toUpdateRecords) {
-              record.last_spower_update_block = updateBlock;
+              record.last_spower_update_block = newLastSpowerUpdateBlock;
               record.last_spower_update_time = new Date();
             }
             await filesV2Op.updateRecords(toUpdateRecords);
           }
 
-          // 5.3 Clear the to-restore records
+          // 5.4 Clear the to-restore records
           await filesV2Op.clearIsSpowerUpdating();
           await configOp.saveJson(KeyUpdatingRecords, {});
 
-          // 5.4 Update config
-          await configOp.saveInt(KeyLastSpowerUpdateBlock, updateBlock);
+          // 5.5 Update config
+          await configOp.saveInt(KeyLastSpowerUpdateBlock, newLastSpowerUpdateBlock);
         } else {
           logger.warn('Call swork.update_spower failed, wait a while and check later');
         }

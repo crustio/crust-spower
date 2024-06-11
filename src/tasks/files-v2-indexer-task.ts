@@ -104,7 +104,7 @@ async function indexAll(
         await Bluebird.delay(500);
         round++;
 
-        await this.withApiReady();
+        await api.ensureConnection();
         
         // Get storage keys in batch by lastIndexedKey
         const keys = await (_.isEmpty(lastIndexedKey)

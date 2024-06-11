@@ -444,7 +444,7 @@ export default class CrustApi {
         const storageKeysInBatch = storageKeys.slice(i, i + batchSize);
         logger.debug(`Batch ${i+1}: ${storageKeysInBatch.length} files`);
 
-        const fileInfoV2MapFromChain = await this.api.rpc.state.queryStorageAt(storageKeys, blockHash);
+        const fileInfoV2MapFromChain = await this.api.rpc.state.queryStorageAt(storageKeysInBatch, blockHash);
 
         fileInfoV2Map = fileInfoV2MapFromChain as any as Map<string, FileInfoV2>;
       }
@@ -514,9 +514,9 @@ export default class CrustApi {
   async updateSpower(
     sworkerChangedSpowerMap: Map<string, bigint>,
     filesChangedMap: Map<string, ChangedFileInfo>,
-    ): Promise<[boolean,number]> {
+    ): Promise<boolean> {
     if (_.isNil(sworkerChangedSpowerMap) || _.isNil(filesChangedMap)) {
-      return [false, null];
+      return false;
     }
 
     let startTime = performance.now();
@@ -541,11 +541,11 @@ export default class CrustApi {
       txRes = txRes ? txRes : {status:'failed', details: 'Null txRes'};
       if (txRes.status == 'success') {
         logger.info(`Update spower data to chain successfully`);
-        return [true, txRes.blockNumber];
+        return true;
       }
       else {
         logger.error(`Failled to update spower data to chain: ${txRes.details}`);
-        return [false, txRes.blockNumber];
+        return false;
       }
     } catch (err) {
       logger.error(`💥 Error to update spower data to chain: ${err}`);
@@ -554,7 +554,7 @@ export default class CrustApi {
       logger.info(`End to update spower data to chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
-    return [false, null];
+    return false;
   }
 
   private async handleTxWithLock(lockName: string, handler: Function) {
@@ -608,22 +608,15 @@ export default class CrustApi {
               result.details = error.documentation.join('');
             }
 
-            this.api.rpc.chain.getHeader(status.asFinalized).then(header => {
-              result.blockNumber = header.number.toNumber();
-              logger.info(`  ↪ 💸 ❌ [tx]: Send transaction(${tx.type}) failed with ${result.message}`);
-              resolve(result);
-            });
-            
+            logger.info(`  ↪ 💸 ❌ [tx]: Send transaction(${tx.type}) failed with ${result.message}`);
+            resolve(result);
           } else if (method === 'ExtrinsicSuccess') {
             const result: TxRes = {
               status: 'success',
             };
 
-            this.api.rpc.chain.getHeader(status.asFinalized).then(header => {
-              result.blockNumber = header.number.toNumber();
-              logger.info(`  ↪ 💸 ✅ [tx]: Send transaction(${tx.type}) success.`);
-              resolve(result);
-            });
+            logger.info(`  ↪ 💸 ✅ [tx]: Send transaction(${tx.type}) success.`);
+            resolve(result);
           }
         });
         } else {

@@ -56,7 +56,7 @@ export function createFilesV2Operator(db: Database): FilesV2Operator {
       const result = await db.run('insert into files_v2 ' + 
             '(`cid`,`file_info`,`last_sync_block`,`last_sync_time`,`need_sync`,`is_closed`,`next_spower_update_block`,`last_updated`,`create_at`) ' + 
             'values (?,?,?,?,?,?,?,?)',
-            [cid, JSON.stringify(fileInfo), syncBlock, new Date(), false, false, null, new Date(), new Date()]
+            [cid, JSON.stringify(fileInfo), syncBlock, new Date(), false, false, nextSpowerUpdateBlock, new Date(), new Date()]
       );
 
       insertRecordsCount += result.changes;
