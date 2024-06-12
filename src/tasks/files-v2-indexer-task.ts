@@ -12,6 +12,8 @@ import { Dayjs } from '../utils/datetime';
 import { MaxNoNewBlockDuration } from '../main';
 import Bluebird from 'bluebird';
 import { createFilesV2Operator } from '../db/files-v2';
+import { MarketFilesV2StorageKey } from '../utils/consts';
+import { cidFromStorageKey } from '../utils';
 
 enum IndexMode {
   IndexAll = 'index-all',
@@ -23,8 +25,6 @@ const KeyIndexAllAtBlock = 'files-v2-indexer:index-all-at-block';
 const KeyIndexAllLastIndexKey = 'files-v2-indexer:index-all-last-index-key';
 export const KeyIndexChangedLastIndexBlock = 'files-v2-indexer:index-changed-last-index-block';
 export const KeyIndexChangedLastSyncBlock = 'files-v2-indexer:index-changed-last-sync-block'
-
-const MarketFilesV2StorageKey = '0x5ebf094108ead4fefa73f7a3b13cb4a76ed21091d079415ef4a35264c626448d';
 
 /**
  * main entry funciton for the task
@@ -147,15 +147,6 @@ async function indexAll(
         logger.error(`💥 Error to index all market.FilesV2 data: ${err}`);
     }
   }
-}
-
-function cidFromStorageKey(key: string): string | null {
-  if (!key.startsWith(MarketFilesV2StorageKey)) {
-    return null;
-  }
-  const cidInHex = key.substr(MarketFilesV2StorageKey.length + 18);
-  const cid = Buffer.from(cidInHex, 'hex').toString().replace(/[^\x00-\x7F]/g, ''); // eslint-disable-line
-  return cid;
 }
 
 async function indexChanged(

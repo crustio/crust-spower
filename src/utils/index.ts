@@ -3,7 +3,7 @@ import dayjs from 'dayjs';
 import BigNumber from 'bignumber.js';
 import seedrandom from 'seedrandom';
 import Bluebird from 'bluebird';
-import { REPORT_SLOT } from './consts';
+import { MarketFilesV2StorageKey, REPORT_SLOT } from './consts';
 
 export const sleep = (t: number): Promise<void> => Bluebird.delay(t);
 
@@ -124,4 +124,13 @@ export function formatError(e: any): string {
 export function convertBlockNumberToReportSlot(blockNumber: number): number {
   let reportIndex = Math.trunc(blockNumber / REPORT_SLOT);
   return reportIndex * REPORT_SLOT;
+}
+
+export function cidFromStorageKey(key: string): string | null {
+  if (!key.startsWith(MarketFilesV2StorageKey)) {
+    return null;
+  }
+  const cidInHex = key.substr(MarketFilesV2StorageKey.length + 18);
+  const cid = Buffer.from(cidInHex, 'hex').toString().replace(/[^\x00-\x7F]/g, ''); // eslint-disable-line
+  return cid;
 }

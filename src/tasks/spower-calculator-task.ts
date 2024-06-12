@@ -78,7 +78,7 @@ async function calculateSpower(
           || lastFilesV2IndexBlock == 0 
           || lastFilesV2SyncSlot < curBlockSlot 
           || (lastFilesV2IndexBlock % REPORT_SLOT) < SPOWER_UPDATE_START_OFFSET) {
-            logger.error(`files-v2-indexer is still catching up the progress, wait a while`);
+            logger.info(`files-v2-indexer is still catching up the progress, wait a while`);
             await Bluebird.delay(6 * 1000);
             continue;
         }
@@ -86,7 +86,7 @@ async function calculateSpower(
         // Get the last spower update block from config
         let lastSpowerUpdateBlock = await configOp.readInt(KeyLastSpowerUpdateBlock);
         if (_.isNil(lastSpowerUpdateBlock)) {
-          logger.debug(`No '${KeyLastSpowerUpdateBlock}' config found in DB, get it from chain`);
+          logger.info(`No '${KeyLastSpowerUpdateBlock}' config found in DB, get it from chain`);
           lastSpowerUpdateBlock = await api.getLastSpowerUpdateBlock();
           
           configOp.saveInt(KeyLastSpowerUpdateBlock, lastSpowerUpdateBlock);
@@ -137,7 +137,7 @@ async function calculateSpower(
         // 0. Get the qualified records to calculate
         const filesToCalcRecords = await filesV2Op.getNeedSpowerUpdateRecords(spowerCalculateBatchSize, curBlock);
         if (filesToCalcRecords.length == 0) {
-          logger.debug(`No more files to calculate spower, wait for new report slot`);
+          logger.info(`No more files to calculate spower, wait for new report slot`);
           const waitTime = (REPORT_SLOT - blockInSlot + SPOWER_UPDATE_START_OFFSET) * 6 * 1000;
           await Bluebird.delay(waitTime);
           continue;
@@ -282,9 +282,7 @@ async function calculateSpower(
         await filesV2Op.setIsSpowerUpdating(allCids);
 
         // 4.2 Perform the update
-        logger.debug(`Call swork.update_spower: \n 
-                        changed sworkers count - ${sworkerChangedSpowerMap.size} \n
-                        changed files count - ${filesChangedMap.size}`);
+        logger.debug(`Call swork.update_spower: changed sworkers count - ${sworkerChangedSpowerMap.size}, changed files count - ${filesChangedMap.size}`);
         const result = await api.updateSpower(sworkerChangedSpowerMap, filesChangedMap);
 
         // 5. Update db status

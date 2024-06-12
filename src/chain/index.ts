@@ -1,7 +1,7 @@
 import { ApiPromise, Keyring, WsProvider } from '@polkadot/api';
 import { BlockHash, Header, SignedBlock, DispatchError, Extrinsic, EventRecord } from '@polkadot/types/interfaces';
 import { KeyringPair } from '@polkadot/keyring/types';
-import { formatError, hexToString, parseObj, queryToObj, sleep } from '../utils';
+import { cidFromStorageKey, formatError, hexToString, parseObj, queryToObj, sleep } from '../utils';
 import { typesBundleForPolkadot, crustTypes } from '@crustio/type-definitions';
 import _ from 'lodash';
 import { SLOT_LENGTH } from '../utils/consts';
@@ -13,6 +13,8 @@ import { TxRes, WorkReportsToProcess, FileToUpdate, FileInfoV2, ChangedFileInfo 
 import { timeout } from '../utils/promise-utils';
 import {ITuple} from '@polkadot/types/types';
 import { SPowerConfig } from '../types/spower-config';
+import { u8aToU8a } from '@polkadot/util';
+import { createTypeUnsafe } from '@polkadot/types/create';
 
 export type Identity = typeof crustTypes.swork.types.Identity;
 // export type FileInfoV2 = typeof crustTypes.market.types.FileInfoV2;
@@ -429,63 +431,38 @@ export default class CrustApi {
     let fileInfoV2Map = new Map<string, FileInfoV2>();
     try {
       const blockHash = await this.getBlockHash(atBlock);
+
+      // Generate the related storage keys
+      let storageKeys = [];
+      for (const cid of cids) {
+        storageKeys.push(this.api.query.market.filesV2.key(cid));
+      }
+
+      // Retrieve the FilesInfoV2 data from chain in batch
       const batchSize = this.config.chain.filesV2SyncBatchSize;
-      logger.debug(`Total files count need to query: ${cids.length}, query in batch size: ${batchSize}`);
+      logger.debug(`Total files count need to query: ${storageKeys.length}, query in batch size: ${batchSize}`);
+      for (let i = 0; i < storageKeys.length; i += batchSize) {
+        const storageKeysInBatch = storageKeys.slice(i, i + batchSize);
+        logger.debug(`Batch ${i+1}: ${storageKeysInBatch.length} files`);
 
-      for (let i = 0; i < cids.length; i += batchSize) {
-        const cidsInBatch = cids.slice(i, i + batchSize);
-        logger.debug(`Batch ${i+1}: ${cidsInBatch.length} files`);
+        const fileInfoV2MapFromChain = await this.api.rpc.state.queryStorageAt(storageKeysInBatch, blockHash) as any;
 
-        /// -----------------------------------------------------------------
-        /// TODO: Do it in batch mode
-        for (const cid of cidsInBatch) {
-          const fileInfoV2 = await this.api.query.market.filesV2.at(blockHash, cid) as any;
-          if (fileInfoV2.isSome) {
-            fileInfoV2Map.set(cid, fileInfoV2.value as FileInfoV2);
+        for (let index = 0; index < fileInfoV2MapFromChain.length; index++) {
+          const cid = cidFromStorageKey(storageKeysInBatch[index]);
+          const filesInfoV2Codec = fileInfoV2MapFromChain[index];
+          if (!_.isNil(filesInfoV2Codec)) {
+            // Decode the Codec to FileInfoV2 object 
+            const input = u8aToU8a(filesInfoV2Codec.value);
+            const registry = filesInfoV2Codec.registry;
+            const fileInfoV2 = createTypeUnsafe(registry, 'FileInfoV2', [input], {blockHash, isPedantic: true});
+
+            fileInfoV2Map.set(cid, fileInfoV2 as any);
           }
         }
       }
-
-      // Generate the related storage keys
-      // let storageKeys = [];
-      // for (const cid of cids) {
-      //   //const cidhex = stringToHex(cid);
-      //   storageKeys.push(this.api.query.market.filesV2.key(cid));
-      // }
-
-    //  // const apiAt = await this.api.at(blockHash);
-
-    //   const test = await this.api.query.market.filesV2.entriesAt(blockHash, cids);
-    //   // const test = await this.api.queryMulti(
-    //   //   [this.api.query.market.filesV2.at(blockHash, cids[0]),
-    //   //    this.api.query.market.filesV2.at(blockHash, cids[1])]
-    //   // );
-    //   logger.debug(`test: ${JSON.stringify(test)}`);
-    //   // Retrieve the FilesInfoV2 data from chain in batch
-    //   const batchSize = this.config.chain.filesV2SyncBatchSize;
-    //   logger.debug(`Total files count need to query: ${storageKeys.length}, query in batch size: ${batchSize}`);
-    //   for (let i = 0; i < storageKeys.length; i += batchSize) {
-    //     const storageKeysInBatch = storageKeys.slice(i, i + batchSize);
-    //     logger.debug(`Batch ${i+1}: ${storageKeysInBatch.length} files`);
-
-    //     const fileInfoV2MapFromChain = await this.api.rpc.state.queryStorageAt(storageKeysInBatch, blockHash) as any;
-
-    //     logger.debug(`fileInfoV2MapFromChain: ${JSON.stringify(fileInfoV2MapFromChain)}`);
-    //     logger.debug(`fileInfoV2MapFromChain.changes: ${JSON.stringify(fileInfoV2MapFromChain.changes)}`);
-    //     // fileInfoV2MapFromChain.changes.map(([key, value])=>{
-    //     //   logger.debug(`key: ${key}, value: ${value}`);
-    //     // });
-    //     // fileInfoV2MapFromChain.forEach((data, index) => {
-    //     //   logger.debug(`data: ${data.toHuman()}, data stringify:${JSON.stringify(data)},  index: ${index}`);
-    //     // });
-    //     for (const item of fileInfoV2MapFromChain) {
-    //       logger.debug(`item: ${item}, value: ${item.value}, some: ${item.isSome}`);
-    //     }
-    //     fileInfoV2Map = fileInfoV2MapFromChain as any as Map<string, FileInfoV2>;
-      // }
     } catch (err) {
       logger.error(`💥 Error to get files info v2 from chain: ${err}`);
-      throw err;
+        throw err;
     } finally {
       let endTime = performance.now();
       logger.info(`End to get ${fileInfoV2Map.size} files info v2 from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);

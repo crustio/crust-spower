@@ -36,7 +36,7 @@ export function createFilesV2Operator(db: Database): FilesV2Operator {
       // Calculate the next_spower_update_block
       // If the file has expired, no need to update spower
       let nextSpowerUpdateBlock = null;
-      if (fileInfo.expired_at > currBlock) {
+      if (!_.isNil(fileInfo) && fileInfo.expired_at > currBlock) {
         // The next_spower_update_block is the minimum Not-None create_at block + SpowerDelayPeriod
         if (!_.isEmpty(fileInfo.replicas)) {
           let minimumCreateAtBlock: number = Number.MAX_VALUE;
@@ -72,7 +72,7 @@ export function createFilesV2Operator(db: Database): FilesV2Operator {
       // For update scenario, we also consider the None create_at replicas and the expired files
       // PS: The replicas may not really changed, but this can be covered by the spower-calculate-task
       let nextSpowerUpdateBlock = null;
-      if (!_.isEmpty(fileInfo.replicas)) {
+      if (!_.isNil(fileInfo) && !_.isEmpty(fileInfo.replicas)) {
         let minimumCreateAtBlock: number = Number.MAX_VALUE;
         for (const [_owner,replica] of fileInfo.replicas) {
           if (!_.isNil(replica.created_at)) {
@@ -149,9 +149,9 @@ export function createFilesV2Operator(db: Database): FilesV2Operator {
     const cids_str = cids.map((cid)=>`'${cid}'`).join(',');
     const result = await db.run(
             `update files_v2  
-              set is_closed=?, next_spower_update_block=?, last_updated=?
+              set is_closed=?, need_sync=?, next_spower_update_block=?, last_updated=?
               where cid in (${cids_str})`,
-              [true, currBlock,new Date()]);
+              [true, false, currBlock,new Date()]);
 
     return result.changes;  
   };
