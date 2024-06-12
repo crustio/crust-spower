@@ -122,6 +122,6 @@ export function formatError(e: any): string {
 }
 
 export function convertBlockNumberToReportSlot(blockNumber: number): number {
-  let reportIndex = blockNumber / REPORT_SLOT;
+  let reportIndex = Math.trunc(blockNumber / REPORT_SLOT);
   return reportIndex * REPORT_SLOT;
 }

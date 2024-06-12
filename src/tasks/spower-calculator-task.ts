@@ -12,7 +12,7 @@ import Bluebird from 'bluebird';
 import { createFilesV2Operator } from '../db/files-v2';
 import { createConfigOps } from '../db/configs';
 import { KeyIndexChangedLastIndexBlock } from './files-v2-indexer-task';
-import { convertBlockNumberToReportSlot, sleep } from '../utils';
+import { convertBlockNumberToReportSlot } from '../utils';
 import { FilesV2Record } from '../types/database';
 import { REPORT_SLOT, SPOWER_UPDATE_END_OFFSET, SPOWER_UPDATE_START_OFFSET } from '../utils/consts';
 
@@ -49,7 +49,7 @@ async function calculateSpower(
         const curBlock: number = api.latestFinalizedBlock();
 
         // Only run the spower calculate within the 400th and 489th block of this slot
-        // The reason for end block 489 is to give the final round some time to calculate and update the spower on chain
+        // The reason for end block 490 is to give the final round some time to calculate and update the spower on chain
         // The pallet_swork would do the workload consolidation starting from 500th block in the lost
         const blockInSlot = curBlock % REPORT_SLOT;
         if (blockInSlot < SPOWER_UPDATE_START_OFFSET || blockInSlot > SPOWER_UPDATE_END_OFFSET) {
@@ -97,7 +97,7 @@ async function calculateSpower(
         // like network interruption, client be killed or crash, etc), so check the on chain status here to avoid repeated calculation
         let lastSpowerUpdateBlockOnChain = await api.getLastSpowerUpdateBlock();
         if (lastSpowerUpdateBlockOnChain > lastSpowerUpdateBlock) {
-          logger.warn(`Inconsistent 'LastSpowerUpdateBlock' between on chain (${lastSpowerUpdateBlockOnChain}) and local (${lastSpowerUpdateBlock}). \n
+          logger.warn(`Inconsistent 'LastSpowerUpdateBlock' between on chain (${lastSpowerUpdateBlockOnChain}) and local (${lastSpowerUpdateBlock}).
                        Mark the is_spower_updating records as success`);
 
           const updatingRecords = await configOp.readJson(KeyUpdatingRecords) as UpdatingRecords;
@@ -109,7 +109,7 @@ async function calculateSpower(
               await filesV2Op.deleteRecords(toDeleteCids);
             }
 
-            // Update existing record data, which contains the updated file_inf)
+            // Update existing record data, which contains the updated file_info
             const toUpdateRecords = updatingRecords.toUpdateRecords;
             if (!_.isNil(toUpdateRecords) && toUpdateRecords.length > 0) {
               logger.debug(`Update ${toUpdateRecords.length} records in files-v2 table`);
@@ -135,8 +135,14 @@ async function calculateSpower(
         logger.info(`Round ${round} - Start to calculate spower at block '${curBlock}' (blockInSlot: ${blockInSlot})`);
 
         // 0. Get the qualified records to calculate
-        const filesToCalcRecords = await filesV2Op.getNeedSpowerUpdateRecords(spowerCalculateBatchSize, curBlock)
-        logger.info(`Calculate ${filesToCalcRecords.length} files`);
+        const filesToCalcRecords = await filesV2Op.getNeedSpowerUpdateRecords(spowerCalculateBatchSize, curBlock);
+        if (filesToCalcRecords.length == 0) {
+          logger.debug(`No more files to calculate spower, wait for new report slot`);
+          const waitTime = (REPORT_SLOT - blockInSlot + SPOWER_UPDATE_START_OFFSET) * 6 * 1000;
+          await Bluebird.delay(waitTime);
+          continue;
+        }
+        logger.info(`Calculate spower for ${filesToCalcRecords.length} files`);
        
         // 1. Construct the filesInfoV2Map structure
         logger.debug(`1. Construct the filesInfoV2Map structure`);
@@ -198,15 +204,15 @@ async function calculateSpower(
 
             if (_.isNil(replica.created_at)) {
               // Already use spower
-              changedSpower += (newSpower - fileInfoV2.spower);
+              changedSpower += (newSpower - BigInt(fileInfoV2.spower));
             } else {
               // Not use spower yet, file_size is the oldSpower
               if (record.is_closed) {
-                changedSpower += (newSpower - fileInfoV2.file_size);
+                changedSpower += (newSpower - BigInt(fileInfoV2.file_size));
               } else {
                 // For new replicas, only update to spower if already pass the spowerReadyPeriod
                 if (replica.created_at + spowerReadyPeriod <= curBlock) {
-                  changedSpower += (newSpower - fileInfoV2.file_size);
+                  changedSpower += (newSpower - BigInt(fileInfoV2.file_size));
 
                   // Update the created_at to None
                   replica.created_at = null;
@@ -245,7 +251,18 @@ async function calculateSpower(
 
             // Update existing record which would need to write back to DB
             record.next_spower_update_block = nextSpowerUpdateBlock;
-            record.file_info = JSON.stringify(fileInfoV2);
+            record.file_info = JSON.stringify(fileInfoV2, (_key, value) => {
+              if (typeof value === 'bigint') {
+                return value.toString();
+              } else if (value instanceof Map) {
+                const obj = {};
+                value.forEach((v,k) => {
+                  obj[k] = v;
+                });
+                return obj;
+              }
+              return value;
+            });
 
             toUpdateRecords.push(record);
           } else {
@@ -273,10 +290,6 @@ async function calculateSpower(
         // 5. Update db status
         if (result === true) {
           // TODO: The following db operations should be in a single transaction
-
-          // For testing purpose
-          throw new Error('!!!!!!Test error: swork.update_spower success but client update failed');
-
 
           // 5.1 Get last spower update block from chain
           const newLastSpowerUpdateBlock = await api.getLastSpowerUpdateBlock();

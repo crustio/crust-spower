@@ -218,6 +218,7 @@ async function indexChanged(
                 }
                 
                 // Update the last index block
+                lastIndexBlock = block;
                 configOp.saveInt(KeyIndexChangedLastIndexBlock, block);
 
                 // Do the actual FilesV2 data sync every configure interval

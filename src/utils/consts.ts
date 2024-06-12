@@ -8,6 +8,7 @@ export const ISOLATION = 'isolation';
 
 export const LargeFileSize = 5 * 1024; // 5GB+ files are large files
 
-export const REPORT_SLOT = 600;
-export const SPOWER_UPDATE_START_OFFSET = 400;
-export const SPOWER_UPDATE_END_OFFSET = 490;
+export const REPORT_SLOT = 10;
+export const SPOWER_UPDATE_START_OFFSET = 5;
+export const SPOWER_UPDATE_END_OFFSET = 10;
+export const WORKREPORT_PROCESSOR_OFFSET = 1;

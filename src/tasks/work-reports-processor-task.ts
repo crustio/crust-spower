@@ -12,7 +12,7 @@ import { FileToUpdate, ReplicaToUpdate, WorkReportsToProcess } from '../types/ch
 import { stringToHex } from '../utils';
 import _ from 'lodash';
 import Bluebird from 'bluebird';
-import { REPORT_SLOT, SPOWER_UPDATE_START_OFFSET } from '../utils/consts';
+import { REPORT_SLOT, SPOWER_UPDATE_START_OFFSET, WORKREPORT_PROCESSOR_OFFSET } from '../utils/consts';
 import { createConfigOps } from '../db/configs';
 
 const KeyWorkReportsLastProcessBlock = 'work-reports-processor:last-process-block';
@@ -49,14 +49,14 @@ async function processWorkReports(
       // The spower-calculator-task will calculate the spower within the 400th ~ 490th block within the slot
       // Separate the replicas update and spower calculation to avoid race condition and inconsistent data
       const blockInSlot = curBlock % REPORT_SLOT;
-      if ( blockInSlot < 10 && blockInSlot > (SPOWER_UPDATE_START_OFFSET-10) )  {
+      if ( blockInSlot < WORKREPORT_PROCESSOR_OFFSET && blockInSlot > (SPOWER_UPDATE_START_OFFSET-WORKREPORT_PROCESSOR_OFFSET) )  {
         logger.info(`Not in the work reports process block range, blockInSlot: ${blockInSlot}, keep waiting..`);
 
         let waitTime = 6000;
-        if (blockInSlot < 10) {
-          waitTime = (10 - blockInSlot) * 6 * 1000;
+        if (blockInSlot < WORKREPORT_PROCESSOR_OFFSET) {
+          waitTime = (WORKREPORT_PROCESSOR_OFFSET - blockInSlot) * 6 * 1000;
         } else {
-          waitTime = (REPORT_SLOT - blockInSlot + 10) * 6 * 1000;
+          waitTime = (REPORT_SLOT - blockInSlot + WORKREPORT_PROCESSOR_OFFSET) * 6 * 1000;
         }
 
         await Bluebird.delay(waitTime);

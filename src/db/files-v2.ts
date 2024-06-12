@@ -14,7 +14,7 @@ export function createFilesV2Operator(db: Database): FilesV2Operator {
 
     const { api, config } = context;
     const currBlock = await api.latestFinalizedBlock();
-    const spowerReadyPeriod = config.chain.spowerReadyPeriod;
+    const spowerReadyPeriod = config.chain.spowerReadyPeriod as number;
 
     let insertRecordsCount = 0;
     let updateRecordsCount = 0;
@@ -22,7 +22,8 @@ export function createFilesV2Operator(db: Database): FilesV2Operator {
     const cids = [...fileInfoV2Map.keys()];
     const cids_str = cids.map((cid)=>`'${cid}'`).join(',');
 
-    const existCids: string[] = await db.all(`select cid from files_v2 where cid in (${cids_str})`);
+    const existCidsRecords = await db.all(`select cid from files_v2 where cid in (${cids_str})`);
+    const existCids = existCidsRecords.map((r)=>r.cid);
 
     const existCidsSet = new Set(existCids);
     const nonExistCids = cids.filter(cid => !existCidsSet.has(cid) );
@@ -38,11 +39,11 @@ export function createFilesV2Operator(db: Database): FilesV2Operator {
       if (fileInfo.expired_at > currBlock) {
         // The next_spower_update_block is the minimum Not-None create_at block + SpowerDelayPeriod
         if (!_.isEmpty(fileInfo.replicas)) {
-          let minimumCreateAtBlock = Number.MAX_VALUE;
+          let minimumCreateAtBlock: number = Number.MAX_VALUE;
           for (const [_owner,replica] of fileInfo.replicas) {
             if (!_.isNil(replica.created_at)) {
               if (replica.created_at < minimumCreateAtBlock) {
-                minimumCreateAtBlock = replica.created_at;
+                minimumCreateAtBlock = parseInt(replica.created_at as any);
               }
             }
           }
@@ -72,11 +73,11 @@ export function createFilesV2Operator(db: Database): FilesV2Operator {
       // PS: The replicas may not really changed, but this can be covered by the spower-calculate-task
       let nextSpowerUpdateBlock = null;
       if (!_.isEmpty(fileInfo.replicas)) {
-        let minimumCreateAtBlock = Number.MAX_VALUE;
+        let minimumCreateAtBlock: number = Number.MAX_VALUE;
         for (const [_owner,replica] of fileInfo.replicas) {
           if (!_.isNil(replica.created_at)) {
             if (replica.created_at < minimumCreateAtBlock) {
-              minimumCreateAtBlock = replica.created_at;
+              minimumCreateAtBlock = parseInt(replica.created_at as any);
             } 
           } else {
             minimumCreateAtBlock = 0;
@@ -111,7 +112,8 @@ export function createFilesV2Operator(db: Database): FilesV2Operator {
     let updateRecordsCount = 0;
 
     const cidsStr = cids.map((cid)=>`'${cid}'`).join(',');
-    const existCids: string[] = await db.all(`select cid from files_v2 where cid in (${cidsStr})`);
+    const existCidsRecords = await db.all(`select cid from files_v2 where cid in (${cidsStr})`);
+    const existCids = existCidsRecords.map((r)=>r.cid);
 
     const existCidsSet = new Set(existCids);
     const nonExistCids = cids.filter(cid => !existCidsSet.has(cid) );
@@ -158,7 +160,9 @@ export function createFilesV2Operator(db: Database): FilesV2Operator {
     count: number
   ): Promise<string[]> => {
 
-    return await db.all(`select cid from files_v2 where need_sync=1 limit ${count}`);
+    const result = await db.all(`select cid from files_v2 where need_sync=1 limit ${count}`);
+
+    return result.map((r: any) => r.cid);
   };
 
   const getNeedSpowerUpdateRecords = async (
@@ -199,8 +203,8 @@ export function createFilesV2Operator(db: Database): FilesV2Operator {
              last_spower_update_block = ?,
              last_spower_update_time = ?,
              next_spower_update_block = ?,
-             is_spower_updating = ?
-             last_updated = ?,
+             is_spower_updating = ?,
+             last_updated = ? 
              where cid = ?`,
             [record.file_info, record.last_sync_block, record.last_sync_time, record.need_sync, record.is_closed, record.last_spower_update_block,
              record.last_spower_update_time, record.next_spower_update_block, record.is_spower_updating, new Date(), record.cid]
