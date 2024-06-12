@@ -105,6 +105,7 @@ async function indexAll(
         round++;
 
         await api.ensureConnection();
+        const curBlock = api.latestFinalizedBlock();
         
         // Get storage keys in batch by lastIndexedKey
         const keys = await (_.isEmpty(lastIndexedKey)
@@ -138,7 +139,7 @@ async function indexAll(
         logger.info(`Round ${round} - Got ${cids.length} cids to process`);
 
         // Sync the FilesV2 data from chain
-        await syncFilesV2Data(cids, indexAtBlock, context, logger);
+        await syncFilesV2Data(cids, indexAtBlock, curBlock, context, logger);
 
         // Save the last indexed key
         await config.saveString(KeyIndexAllLastIndexKey, newLastIndexedKey);
@@ -222,7 +223,7 @@ async function indexChanged(
                         if (_.isEmpty(isChangedCids))
                             break;
 
-                        await syncFilesV2Data(isChangedCids, block, context, logger);
+                        await syncFilesV2Data(isChangedCids, block, curBlock, context, logger);
                     }while(true);
 
                     // Update the last sync block
@@ -235,18 +236,57 @@ async function indexChanged(
     }
 }
 
-async function syncFilesV2Data(cids: string[], atBlock: number, context: AppContext, logger: Logger) {
-    const { api, database } = context;
+async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number, context: AppContext, logger: Logger) {
+    const { api, database, config } = context;
     const filesV2Op = createFilesV2Operator(database);
 
     if (!_.isEmpty(cids)) {
         // Get the detailed FileInfoV2 data from chain for the cids array
         const fileInfoV2Map = await api.getFilesInfoV2(cids, atBlock);
-        logger.info(`Get ${fileInfoV2Map.size} FileInfoV2 data from chain at block '${atBlock}'`);
+        logger.debug(`Get ${fileInfoV2Map.size} FileInfoV2 data from chain at block '${atBlock}'`);
 
-        // Add fileInfoV2Map to file_info_v2 table
-        const [insertCount, updateCount] = await filesV2Op.upsertFilesV2(fileInfoV2Map, atBlock, context);
-        logger.info(`Upsert ${fileInfoV2Map.size} files at block '${atBlock}' to files_v2 table: New - ${insertCount}, Update: ${updateCount}`);
+        // Construct the batch toUpsertRecords
+        let toUpsertRecords = [];
+        for (const [cid, fileInfo] of fileInfoV2Map) {
+          // Calculate the next_spower_update_block for non-expired files
+          // The next_spower_update_block is the minimum create_at block + SpowerDelayPeriod
+          let nextSpowerUpdateBlock = null;
+          if (!_.isNil(fileInfo) && !_.isEmpty(fileInfo.replicas) && fileInfo.expired_at > curBlock) {
+            let minimumCreateAtBlock: number = Number.MAX_VALUE;
+            for (const [_owner,replica] of fileInfo.replicas) {
+              if (!_.isNil(replica.created_at)) {
+                if (replica.created_at < minimumCreateAtBlock) {
+                  minimumCreateAtBlock = parseInt(replica.created_at as any);
+                } 
+              } else {
+                minimumCreateAtBlock = 0;
+              }
+            }
+
+            if (minimumCreateAtBlock == 0) {
+              nextSpowerUpdateBlock = curBlock;
+            } else {
+              nextSpowerUpdateBlock = minimumCreateAtBlock + config.chain.spowerReadyPeriod as number;
+            }
+          }
+
+          toUpsertRecords.push({
+            cid,
+            file_info: JSON.stringify(fileInfo),
+            last_sync_block: atBlock,
+            last_sync_time: new Date(),
+            need_sync: false,
+            is_closed: false,
+            next_spower_update_block: nextSpowerUpdateBlock
+          });
+        }
+
+        const existCids = await filesV2Op.getExistingCids(cids);
+
+        // Upsert to files_v2 table
+        const affectedRows = await filesV2Op.upsertRecords(toUpsertRecords);
+        
+        logger.info(`Upsert ${fileInfoV2Map.size} files at block '${atBlock}' to files_v2 table: New - ${affectedRows - existCids.length}, Update: ${existCids.length}`);
     }
 }
 

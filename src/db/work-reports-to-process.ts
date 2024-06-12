@@ -1,8 +1,8 @@
-import { Database } from 'sqlite';
+import { Op, Sequelize } from 'sequelize';
 import { WorkReportsToProcessOperator, WorkReportsToProcessRecord, WorkReportsProcessStatus } from '../types/database';
 import { WorkReportsToProcess } from '../types/chain';
 
-export function createWorkReportsToProcessOperator(db: Database): WorkReportsToProcessOperator {
+export function createWorkReportsToProcessOperator(_db: Sequelize): WorkReportsToProcessOperator {
 
   const addWorkReports = async (
     reportBlock: number, 
@@ -14,30 +14,28 @@ export function createWorkReportsToProcessOperator(db: Database): WorkReportsToP
       return a.extrinsic_index - b.extrinsic_index;
     });
 
-    const result = await db.run(
-          'insert or ignore into work_reports_to_process ' +
-          '(`report_block`,  `work_reports`, `status`, `last_updated`, `create_at`)' +
-          ' values (?, ?, ?, ?, ?)',
-          [
-            reportBlock,
-            JSON.stringify(workReports),
-            'new',
-            new Date(),
-            new Date(),
-          ]
-        );
+    const [ _record, created ] = await WorkReportsToProcessRecord.upsert({
+      report_block: reportBlock,
+      work_reports: JSON.stringify(workReports),
+      status: 'new',
+    });
 
-    return result.changes;
+    return created ? 1 : 0;
   };
 
   const getPendingWorkReports = async (
     count: number,
     beforeBlock: number
   ): Promise<WorkReportsToProcessRecord[]> => {
-    return await db.all(
-      `select * from work_reports_to_process 
-      where status in ('new', 'failed') and report_block <= ${beforeBlock} order by report_block asc limit ${count}`
-    );
+
+    return await WorkReportsToProcessRecord.findAll({
+      where: {
+        status: ['new', 'failed'],
+        report_block: { [Op.lte]: beforeBlock },
+      },
+      order: [['report_block', 'ASC']],
+      limit: count
+    });
   };
 
   const updateStatus = async (
@@ -45,13 +43,14 @@ export function createWorkReportsToProcessOperator(db: Database): WorkReportsToP
     status: WorkReportsProcessStatus,
   ) => {
     if (ids && ids.length > 0) {
-      const ids_str = ids.join(',');
-      await db.run(
-        `update work_reports_to_process set status = ?, last_updated = ? where id in (${ids_str})`,
-        [status, new Date()],
-      );
+      WorkReportsToProcessRecord.update({
+        status,
+      }, {
+        where: {
+          id: ids,
+        },
+      });
     }
-    
   };
 
   

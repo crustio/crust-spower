@@ -1,31 +1,42 @@
-import sqlite3 = require('sqlite3');
-import { Database, open } from 'sqlite';
 import { SPowerConfig } from '../types/spower-config';
-import path from 'path';
 import { Sequelize } from 'sequelize';
 import { createChildLogger } from '../utils/logger';
 import { applyMigration } from './migration';
 
-export async function loadDb(config: SPowerConfig): Promise<Database> {
+export let sequelize: Sequelize;
+
+export async function loadDb(config: SPowerConfig): Promise<Sequelize> {
   const logger = createChildLogger({
     moduleId: 'db',
     modulePrefix: '💽',
   });
-  const dbPath = path.join(config.dataDir, 'spower-db.sqlite');
-  const sequelize = new Sequelize({
-    dialect: 'sqlite',
-    storage: dbPath,
+  
+  const dbConfig = config.database;
+  if (dbConfig.dialect !== 'mysql') {
+    throw new Error('Only mysql is supported');
+  }
+  sequelize = new Sequelize(dbConfig.database, dbConfig.username, dbConfig.password, {
+    dialect: 'mysql',
+    host: dbConfig.host,
+    port: dbConfig.port,
+    define: {
+      freezeTableName: true,
+      createdAt: 'create_at',
+      updatedAt: 'last_updated'
+    }
   });
 
+  // Apply DB schema migrations
   await applyMigration(sequelize, logger);
-  // we use sequelize just for migrations
-  await sequelize.close();
 
-  logger.info('initialize db connection...', { scope: 'db' });
-  const db = await open({
-    filename: dbPath,
-    driver: sqlite3.Database,
-  });
+  // Test DB connection
+  try {
+    await sequelize.authenticate();
+    logger.info('Connect to db successfully!');
+  } catch(err) {
+    logger.error(`Failed to connect to db: ${err}`);
+    throw err;
+  }
 
-  return db;
+  return sequelize;
 }

@@ -13,9 +13,13 @@ export const up: MigrationFn<QueryInterface> = async ({
     },
     content: {
       type: DataTypes.TEXT,
-      allowNull: false,
+      allowNull: true,
     },
     last_updated: {
+      type: DataTypes.DATE,
+      allowNull: false,
+    },
+    create_at: {
       type: DataTypes.DATE,
       allowNull: false,
     },
@@ -48,7 +52,7 @@ async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
           unique: true,
         },
         work_reports: {
-          type: DataTypes.STRING,
+          type: DataTypes.TEXT,
           allowNull: false,
         },
         status: {
@@ -95,7 +99,7 @@ async function createFilesV2Table(sequelize: QueryInterface) {
           primaryKey: true,
         },
         file_info: {
-          type: DataTypes.STRING,
+          type: DataTypes.TEXT,
           allowNull: true,
         },
         last_sync_block: {

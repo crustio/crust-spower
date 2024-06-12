@@ -16,6 +16,15 @@ const chainConfigSchema = Joi.object().keys({
   spowerCalculateBatchSize: Joi.number().required(),
 });
 
+const databaseConfigSchema = Joi.object().keys({
+  dialect: Joi.string().required(),
+  host: Joi.string().required(),
+  port: Joi.number().required(),
+  username: Joi.string().required(),
+  password: Joi.string().required(),
+  database: Joi.string().required(),
+});
+
 const telemetryConfigSchema = Joi.object().keys({
   endPoint: Joi.string().required(),
 });
@@ -24,7 +33,8 @@ const configSchema = Joi.object()
   .keys({
     chain: chainConfigSchema.required(),
     telemetry: telemetryConfigSchema.required(),
-    dataDir: Joi.string().default('data').required()
+    dataDir: Joi.string().default('data').required(),
+    database: databaseConfigSchema.required(),
   })
   .unknown();
 

@@ -16,8 +16,18 @@ export interface TelemetryConfig {
   endPoint: string;
 }
 
+export interface DatabaseConfig {
+  dialect: string;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  database: string;
+}
+
 export interface SPowerConfig {
   chain: ChainConfig;
   telemetry: TelemetryConfig;
   dataDir: string;
+  database: DatabaseConfig;
 }

@@ -1,28 +1,28 @@
 import dayjs, { Dayjs } from 'dayjs';
 import _ from 'lodash';
-import { Database } from 'sqlite';
-import { ConfigOperator, DbResult, DbWriteResult } from '../types/database';
+import { Sequelize } from 'sequelize';
+import { ConfigOperator, ConfigRecord, DbResult, DbWriteResult } from '../types/database';
 import { logger } from '../utils/logger';
-import { getTimestamp } from '../utils';
 
-export function createConfigOps(db: Database): ConfigOperator {
+export function createConfigOps(_db: Sequelize): ConfigOperator {
   const readString = async (name: string): DbResult<string> => {
-    const v = await db.get(
-      'select content from config where name = ? limit 1',
-      [name],
-    );
 
-    if (v === null || v === undefined) {
+    const config = await ConfigRecord.findOne({
+      where : { name },
+      attributes: ['content']
+    }) as any;
+
+    if (_.isNil(config)) {
       return null;
     }
-    return v.content;
+    return config.content;
   };
 
   const saveString = async (name: string, v: string): DbWriteResult => {
-    await db.run(
-      'insert or replace into config (name, content, last_updated) values (?, ?, ?)',
-      [name, v, getTimestamp()],
-    );
+    await ConfigRecord.upsert({
+      name,
+      content: v
+    });
   };
 
   const readInt = async (name: string): DbResult<number> => {
