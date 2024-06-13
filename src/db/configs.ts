@@ -1,6 +1,6 @@
 import dayjs, { Dayjs } from 'dayjs';
 import _ from 'lodash';
-import { Sequelize } from 'sequelize';
+import { Sequelize, Transaction } from 'sequelize';
 import { ConfigOperator, ConfigRecord, DbResult, DbWriteResult } from '../types/database';
 import { logger } from '../utils/logger';
 
@@ -18,10 +18,12 @@ export function createConfigOps(_db: Sequelize): ConfigOperator {
     return config.content;
   };
 
-  const saveString = async (name: string, v: string): DbWriteResult => {
+  const saveString = async (name: string, v: string, transaction?: Transaction): DbWriteResult => {
     await ConfigRecord.upsert({
       name,
       content: v
+    }, {
+      transaction
     });
   };
 
@@ -32,8 +34,8 @@ export function createConfigOps(_db: Sequelize): ConfigOperator {
     }
     return null;
   };
-  const saveInt = async (name: string, v: number): DbWriteResult => {
-    await saveString(name, `${v}`);
+  const saveInt = async (name: string, v: number, transaction?: Transaction): DbWriteResult => {
+    await saveString(name, `${v}`, transaction);
   };
 
   const readTime = async (name: string): DbResult<Dayjs> => {
@@ -47,12 +49,12 @@ export function createConfigOps(_db: Sequelize): ConfigOperator {
     }
     return null;
   };
-  const saveTime = async (name: string, d: Dayjs): DbWriteResult => {
+  const saveTime = async (name: string, d: Dayjs, transaction?: Transaction): DbWriteResult => {
     if (!d.isValid()) {
       throw new Error('invalid date!');
     }
     const v = d.unix();
-    await saveInt(name, v);
+    await saveInt(name, v, transaction);
   };
   const readJson = async (name: string): DbResult<unknown> => {
     const v = await readString(name);
@@ -65,8 +67,8 @@ export function createConfigOps(_db: Sequelize): ConfigOperator {
     }
     return null;
   };
-  const saveJson = async (name: string, v: unknown): DbWriteResult => {
-    await saveString(name, JSON.stringify(v));
+  const saveJson = async (name: string, v: unknown, transaction?: Transaction): DbWriteResult => {
+    await saveString(name, JSON.stringify(v), transaction);
   };
   return {
     readString,

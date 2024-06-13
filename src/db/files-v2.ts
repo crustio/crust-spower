@@ -1,8 +1,8 @@
-import { Op, Sequelize } from 'sequelize';
+import { Op, Sequelize, Transaction } from 'sequelize';
 import { FilesV2Operator, FilesV2Record} from '../types/database';
 import _ from 'lodash';
 
-export function createFilesV2Operator(_db: Sequelize): FilesV2Operator {
+export function createFilesV2Operator(db: Sequelize): FilesV2Operator {
 
   const upsertNeedSync = async (
     cids: string[]
@@ -21,10 +21,13 @@ export function createFilesV2Operator(_db: Sequelize): FilesV2Operator {
       });
     }
 
-    await FilesV2Record.bulkCreate(toUpsertRecords, {
-      updateOnDuplicate: ['cid']
+    await db.transaction(async (transaction) => {
+      await FilesV2Record.bulkCreate(toUpsertRecords, {
+        updateOnDuplicate: ['need_sync'],
+        transaction
+      });
     });
-
+    
     return [cids.length - existCidsCount, existCidsCount];
   };
 
@@ -73,33 +76,58 @@ export function createFilesV2Operator(_db: Sequelize): FilesV2Operator {
   };
 
   const deleteRecords = async (
-    cids: string[]
+    cids: string[],
+    transaction?: Transaction
   ): Promise<number> => {
 
     return await FilesV2Record.destroy({
       where: { cid: cids },
+      transaction
     });
   };
 
   const updateRecords = async (
-    records: FilesV2Record[]
+    records: FilesV2Record[],
+    transaction?: Transaction
   ): Promise<number> => {
 
-    const result = await FilesV2Record.bulkCreate(records, {
-      updateOnDuplicate: ['cid']
-    });
-    
+    const updateFields = Object.keys(FilesV2Record.getAttributes()).filter(field => field !== 'cid');
+    updateFields.push('last_updated');
+
+    let result = [];
+    if (_.isNil(transaction)) {
+      // Start a new transaction if no transaction specified
+      await db.transaction(async (tx) => {
+        result = await FilesV2Record.bulkCreate(records, {
+          updateOnDuplicate: updateFields as any,
+          transaction: tx
+        });
+      });
+    } else {
+      result = await FilesV2Record.bulkCreate(records, {
+        updateOnDuplicate: updateFields as any,
+        transaction
+      });
+    }
+
     return result.length;
   };
   
   const upsertRecords = async (
-    records: FilesV2Record[]
+    records: FilesV2Record[],
+    upsertFields: string[]
   ): Promise<number> => {
 
-    const result = await FilesV2Record.bulkCreate(records, {
-      updateOnDuplicate: ['cid']
+    upsertFields.push('last_updated');
+
+    let result = [];
+    await db.transaction(async (transaction) => {
+      result = await FilesV2Record.bulkCreate(records, {
+        updateOnDuplicate: upsertFields as any,
+        transaction
+      });
     });
-    
+
     return result.length;
   };
 

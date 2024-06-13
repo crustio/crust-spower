@@ -2,8 +2,7 @@ import { SPowerConfig } from '../types/spower-config';
 import { Sequelize } from 'sequelize';
 import { createChildLogger } from '../utils/logger';
 import { applyMigration } from './migration';
-
-export let sequelize: Sequelize;
+import { ConfigRecord, FilesV2Record, WorkReportsToProcessRecord, } from '../types/database';
 
 export async function loadDb(config: SPowerConfig): Promise<Sequelize> {
   const logger = createChildLogger({
@@ -15,12 +14,29 @@ export async function loadDb(config: SPowerConfig): Promise<Sequelize> {
   if (dbConfig.dialect !== 'mysql') {
     throw new Error('Only mysql is supported');
   }
-  sequelize = new Sequelize(dbConfig.database, dbConfig.username, dbConfig.password, {
+  // Create schema first if not exists
+  const sequelizeWithoutDB = new Sequelize('', dbConfig.username, dbConfig.password, {
     dialect: 'mysql',
     host: dbConfig.host,
     port: dbConfig.port,
+    timezone: '+08:00',
+  });
+  try {
+    await sequelizeWithoutDB.query(`CREATE DATABASE IF NOT EXISTS ${dbConfig.database}`);
+  } finally {
+    await sequelizeWithoutDB.close();
+  }
+  
+  // Configure the real sequelize instance
+  const sequelize = new Sequelize(dbConfig.database, dbConfig.username, dbConfig.password, {
+    dialect: 'mysql',
+    host: dbConfig.host,
+    port: dbConfig.port,
+    logging: false,
+    timezone: '+08:00',
     define: {
       freezeTableName: true,
+      timestamps: true,
       createdAt: 'create_at',
       updatedAt: 'last_updated'
     }
@@ -37,6 +53,11 @@ export async function loadDb(config: SPowerConfig): Promise<Sequelize> {
     logger.error(`Failed to connect to db: ${err}`);
     throw err;
   }
+
+  // Init models
+  ConfigRecord.initModel(sequelize);
+  WorkReportsToProcessRecord.initModel(sequelize);
+  FilesV2Record.initModel(sequelize);
 
   return sequelize;
 }

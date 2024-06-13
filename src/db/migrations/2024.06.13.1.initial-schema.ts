@@ -5,26 +5,7 @@ import { withTransaction } from '../db-utils';
 export const up: MigrationFn<QueryInterface> = async ({
   context: sequelize,
 }) => {
-  await sequelize.createTable('config', {
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      primaryKey: true,
-    },
-    content: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-    last_updated: {
-      type: DataTypes.DATE,
-      allowNull: false,
-    },
-    create_at: {
-      type: DataTypes.DATE,
-      allowNull: false,
-    },
-  });
-
+  await createConfigTable(sequelize);
   await createWorkReportsToProcessTable(sequelize);
   await createFilesV2Table(sequelize);
 };
@@ -32,9 +13,36 @@ export const up: MigrationFn<QueryInterface> = async ({
 export const down: MigrationFn<QueryInterface> = async ({
   context: sequelize,
 }) => {
+  await sequelize.dropTable('files_v2');
   await sequelize.dropTable('work_reports_to_process');
   await sequelize.dropTable('config');
 };
+
+async function createConfigTable(sequelize: QueryInterface) {
+  await withTransaction(sequelize, async (transaction) => {
+    await sequelize.createTable('config', {
+      name: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        primaryKey: true,
+      },
+      content: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      last_updated: {
+        type: DataTypes.DATE(3),
+        allowNull: false,
+      },
+      create_at: {
+        type: DataTypes.DATE(3),
+        allowNull: false,
+      },
+    }, {
+      transaction
+    });
+  });
+}
 
 async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
   await withTransaction(sequelize, async (transaction) => {
@@ -43,6 +51,7 @@ async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
       {
         id: {
           type: DataTypes.INTEGER,
+          autoIncrement: true,
           allowNull: false,
           primaryKey: true,
         },
@@ -60,11 +69,11 @@ async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
           allowNull: false,
         },
         last_updated: {
-          type: DataTypes.DATE,
+          type: DataTypes.DATE(3),
           allowNull: false,
         },
         create_at: {
-          type: DataTypes.DATE,
+          type: DataTypes.DATE(3),
           allowNull: false,
         },
       },
@@ -107,7 +116,7 @@ async function createFilesV2Table(sequelize: QueryInterface) {
           allowNull: true,
         },
         last_sync_time: {
-          type: DataTypes.DATE,
+          type: DataTypes.DATE(3),
           allowNull: true,
         },
         need_sync: {
@@ -123,7 +132,7 @@ async function createFilesV2Table(sequelize: QueryInterface) {
           allowNull: true,
         },
         last_spower_update_time: {
-          type: DataTypes.DATE,
+          type: DataTypes.DATE(3),
           allowNull: true,
         },
         next_spower_update_block: {
@@ -135,11 +144,11 @@ async function createFilesV2Table(sequelize: QueryInterface) {
           allowNull: true,
         },
         last_updated: {
-          type: DataTypes.DATE,
+          type: DataTypes.DATE(3),
           allowNull: false,
         },
         create_at: {
-          type: DataTypes.DATE,
+          type: DataTypes.DATE(3),
           allowNull: false,
         },
       },

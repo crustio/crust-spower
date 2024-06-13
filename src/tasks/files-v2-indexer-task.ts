@@ -284,7 +284,8 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
         const existCids = await filesV2Op.getExistingCids(cids);
 
         // Upsert to files_v2 table
-        const affectedRows = await filesV2Op.upsertRecords(toUpsertRecords);
+        const upsertFields = ['file_info', 'last_sync_block', 'last_sync_time', 'need_sync', 'is_closed', 'next_spower_update_block']
+        const affectedRows = await filesV2Op.upsertRecords(toUpsertRecords, upsertFields);
         
         logger.info(`Upsert ${fileInfoV2Map.size} files at block '${atBlock}' to files_v2 table: New - ${affectedRows - existCids.length}, Update: ${existCids.length}`);
     }
