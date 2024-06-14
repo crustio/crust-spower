@@ -1,7 +1,7 @@
 import { ApiPromise, Keyring, WsProvider } from '@polkadot/api';
 import { BlockHash, Header, SignedBlock, DispatchError, Extrinsic, EventRecord } from '@polkadot/types/interfaces';
 import { KeyringPair } from '@polkadot/keyring/types';
-import { cidFromStorageKey, formatError, hexToString, parseObj, queryToObj, sleep, stringToHex, stringifyEx } from '../utils';
+import { cidFromStorageKey, formatError, hexToString, parseObj, queryToObj, sleep, stringToHex } from '../utils';
 import { typesBundleForPolkadot, crustTypes } from '@crustio/type-definitions';
 import _ from 'lodash';
 import { SLOT_LENGTH } from '../utils/consts';
@@ -344,7 +344,7 @@ export default class CrustApi {
       logger.error(`💥 Error to query work reports from chain: ${err}`);
     } finally {
       let endTime = performance.now();
-      logger.info(`End to get ${workReportsToProcess.length} work reports from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+      logger.debug(`End to get ${workReportsToProcess.length} work reports from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
     
     return workReportsToProcess;
@@ -389,7 +389,7 @@ export default class CrustApi {
       throw err;
     } finally {
       let endTime = performance.now();
-      logger.info(`End to get ${cids.length} updated files from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+      logger.debug(`End to get ${cids.length} updated files from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
     return cids;
@@ -415,7 +415,7 @@ export default class CrustApi {
       throw err;
     } finally {
       let endTime = performance.now();
-      logger.info(`End to get ${cids.length} closed files from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+      logger.debug(`End to get ${cids.length} closed files from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
     return cids;
@@ -463,7 +463,7 @@ export default class CrustApi {
         throw err;
     } finally {
       let endTime = performance.now();
-      logger.info(`End to get ${fileInfoV2Map.size} files info v2 from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+      logger.debug(`End to get ${fileInfoV2Map.size} files info v2 from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
     return fileInfoV2Map;
@@ -505,7 +505,7 @@ export default class CrustApi {
       logger.error(`💥 Error to update replicas data to chain: ${err}`);
     } finally {
       let endTime = performance.now();
-      logger.info(`End to update replicas data to chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+      logger.debug(`End to update replicas data to chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
     return false;
@@ -571,7 +571,7 @@ export default class CrustApi {
       logger.error(`💥 Error to update spower data to chain: ${err}`);
     } finally {
       let endTime = performance.now();
-      logger.info(`End to update spower data to chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+      logger.debug(`End to update spower data to chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
     return false;

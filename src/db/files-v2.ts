@@ -95,10 +95,6 @@ export function createFilesV2Operator(db: Sequelize): FilesV2Operator {
     transaction?: Transaction
   ): Promise<number> => {
 
-    // if (!updateFields.includes('last_updated')){
-    //   updateFields.push('last_updated');
-    // }
-
     // If record is Model type, need to transform it to object
     let toUpdateRecords = [];
     for (const record of records) {
@@ -131,10 +127,6 @@ export function createFilesV2Operator(db: Sequelize): FilesV2Operator {
     records: FilesV2Record[],
     upsertFields: string[]
   ): Promise<number> => {
-
-    // if (!upsertFields.includes('last_updated')){
-    //   upsertFields.push('last_updated');
-    // }
 
     let result = [];
     await db.transaction(async (transaction) => {

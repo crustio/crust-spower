@@ -28,6 +28,5 @@ export interface DatabaseConfig {
 export interface SPowerConfig {
   chain: ChainConfig;
   telemetry: TelemetryConfig;
-  dataDir: string;
   database: DatabaseConfig;
 }

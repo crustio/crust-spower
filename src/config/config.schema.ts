@@ -33,7 +33,6 @@ const configSchema = Joi.object()
   .keys({
     chain: chainConfigSchema.required(),
     telemetry: telemetryConfigSchema.required(),
-    dataDir: Joi.string().default('data').required(),
     database: databaseConfigSchema.required(),
   })
   .unknown();

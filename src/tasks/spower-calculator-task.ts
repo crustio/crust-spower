@@ -39,6 +39,7 @@ async function calculateSpower(
     const spowerReadyPeriod = config.chain.spowerReadyPeriod;
     const spowerCalculateBatchSize = config.chain.spowerCalculateBatchSize;
     let round = 0;
+    let lastReportSlot = 0;
 
     while(!isStopped()) {
       try { 
@@ -113,8 +114,14 @@ async function calculateSpower(
         
         //////////////////////////////////////////////////////////////
         // Perform the calculation
+
+        // Reset the round counter for new report slot
+        if (lastReportSlot < curBlockSlot) {
+          lastReportSlot = curBlockSlot;
+          round = 0;
+        }
         round++;
-        logger.info(`Round ${round} - Start to calculate spower at block '${curBlock}' (blockInSlot: ${blockInSlot})`);
+        logger.info(`Round ${round} - Start to calculate spower at block '${curBlock}' (blockInSlot: ${blockInSlot}, reportSlot: ${curBlockSlot})`);
 
         // 0. Get the qualified records to calculate
         const filesToCalcRecords = await filesV2Op.getNeedSpowerUpdateRecords(spowerCalculateBatchSize, curBlock);

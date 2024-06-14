@@ -192,6 +192,7 @@ async function indexChanged(
             lastBlockTime = Dayjs();
 
             // Iterate every block to get the updated files to process
+            logger.info(`Index files-v2 data from block '${lastIndexBlock+1}' to '${curBlock}'`);
             for (let block = lastIndexBlock + 1; block <= curBlock; block++) {
                 if (isStopped())
                     return;
@@ -215,19 +216,20 @@ async function indexChanged(
 
                 // Do the actual FilesV2 data sync every configure interval
                 if (block % filesV2IndexChangedSyncInterval == 0) {
-                    do {
-                        if (isStopped())
-                            return;
+                  logger.info(`Sync FilesV2 data at block '${block}'`);
+                  do {
+                      if (isStopped())
+                          return;
 
-                        const isChangedCids = await filesV2Op.getNeedSync(filesV2SyncBatchSize);
-                        if (_.isEmpty(isChangedCids))
-                            break;
+                      const isChangedCids = await filesV2Op.getNeedSync(filesV2SyncBatchSize);
+                      if (_.isEmpty(isChangedCids))
+                          break;
 
-                        await syncFilesV2Data(isChangedCids, block, curBlock, context, logger);
-                    }while(true);
+                      await syncFilesV2Data(isChangedCids, block, curBlock, context, logger);
+                  }while(true);
 
-                    // Update the last sync block
-                    configOp.saveInt(KeyIndexChangedLastSyncBlock, block);
+                  // Update the last sync block
+                  configOp.saveInt(KeyIndexChangedLastSyncBlock, block);
                 }
             }
         } catch (err) {
@@ -256,7 +258,7 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
             for (const [_owner,replica] of fileInfo.replicas) {
               let createdAt = replica.created_at as any;
               if (!_.isNil(createdAt) && !createdAt.isEmpty) {
-                createdAt = createdAt as number;
+                createdAt = parseInt(createdAt);
                 if (createdAt < minimumCreateAtBlock) {
                   minimumCreateAtBlock = createdAt;
                 } 

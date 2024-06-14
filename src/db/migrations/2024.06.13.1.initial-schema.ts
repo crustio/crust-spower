@@ -1,4 +1,4 @@
-import { DataTypes, QueryInterface } from 'sequelize';
+import { DataTypes, QueryInterface, Sequelize } from 'sequelize';
 import { MigrationFn } from 'umzug';
 import { withTransaction } from '../db-utils';
 
@@ -33,10 +33,12 @@ async function createConfigTable(sequelize: QueryInterface) {
       last_updated: {
         type: DataTypes.DATE(3),
         allowNull: false,
+        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)'),
       },
       create_at: {
         type: DataTypes.DATE(3),
         allowNull: false,
+        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP(3)')
       },
     }, {
       transaction
@@ -71,10 +73,12 @@ async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
         last_updated: {
           type: DataTypes.DATE(3),
           allowNull: false,
+          defaultValue: Sequelize.literal('CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)'),
         },
         create_at: {
           type: DataTypes.DATE(3),
           allowNull: false,
+          defaultValue: Sequelize.literal('CURRENT_TIMESTAMP(3)')
         },
       },
       {
@@ -121,11 +125,13 @@ async function createFilesV2Table(sequelize: QueryInterface) {
         },
         need_sync: {
           type: DataTypes.BOOLEAN,
-          allowNull: true,
+          allowNull: false,
+          defaultValue: false
         },
         is_closed: {
           type: DataTypes.BOOLEAN,
-          allowNull: true,
+          allowNull: false,
+          defaultValue: false
         },
         last_spower_update_block: {
           type: DataTypes.INTEGER,
@@ -141,15 +147,18 @@ async function createFilesV2Table(sequelize: QueryInterface) {
         },
         is_spower_updating: {
           type: DataTypes.BOOLEAN,
-          allowNull: true,
+          allowNull: false,
+          defaultValue: false
         },
         last_updated: {
           type: DataTypes.DATE(3),
           allowNull: false,
+          defaultValue: Sequelize.literal('CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)'),
         },
         create_at: {
           type: DataTypes.DATE(3),
           allowNull: false,
+          defaultValue: Sequelize.literal('CURRENT_TIMESTAMP(3)')
         },
       },
       {

@@ -135,11 +135,13 @@ export class FilesV2Record extends Model<InferAttributes<FilesV2Record>, InferCr
       },
       need_sync: {
         type: DataTypes.BOOLEAN,
-        allowNull: true,
+        allowNull: false,
+        defaultValue: false
       },
       is_closed: {
         type: DataTypes.BOOLEAN,
-        allowNull: true,
+        allowNull: false,
+        defaultValue: false
       },
       last_spower_update_block: {
         type: DataTypes.INTEGER,
@@ -155,7 +157,8 @@ export class FilesV2Record extends Model<InferAttributes<FilesV2Record>, InferCr
       },
       is_spower_updating: {
         type: DataTypes.BOOLEAN,
-        allowNull: true,
+        allowNull: false,
+        defaultValue: false
       },
       last_updated: {
         type: DataTypes.DATE(3),

@@ -62,19 +62,20 @@ async function processWorkReports(
         continue;
       }
 
-      // Check running interval
       // Get the last processed block from config DB
       let lastProcessBlock = await configOp.readInt(KeyWorkReportsLastProcessBlock);
       if (_.isNil(lastProcessBlock)) {
-        logger.debug(`No '${KeyWorkReportsLastProcessBlock}' config found in DB, this is the first run, set to current block ${curBlock}`);
+        logger.info(`No '${KeyWorkReportsLastProcessBlock}' config found in DB, this is the first run, set to current block ${curBlock}`);
         lastProcessBlock = curBlock;
         
         configOp.saveInt(KeyWorkReportsLastProcessBlock, lastProcessBlock);
       }
 
+      // Check running interval
       const interval = curBlock - lastProcessBlock;
       if ( interval < workReportsProcessorInterval) {
-        await Bluebird.delay(interval * 6 * 1000);
+        logger.info(`Not reach interval yet, wait for ${workReportsProcessorInterval-interval} blocks`);
+        await Bluebird.delay((workReportsProcessorInterval-interval) * 6 * 1000);
         continue;
       }
 
@@ -89,8 +90,8 @@ async function processWorkReports(
         // Check the latest block and break out if larger than SPOWER_UPDATE_START_OFFSET
         const latestBlock: number = api.latestFinalizedBlock();
         const latestBlockInSlot = latestBlock % REPORT_SLOT;
-        if (latestBlockInSlot>=SPOWER_UPDATE_START_OFFSET) {
-          logger.info(`Latest block '${latestBlock}' (block in slot: ${latestBlockInSlot}) is after ${SPOWER_UPDATE_START_OFFSET}, break out`);
+        if (latestBlockInSlot>(SPOWER_UPDATE_START_OFFSET-WORKREPORT_PROCESSOR_OFFSET)) {
+          logger.info(`Current block in slot: '${latestBlockInSlot}' (block '${latestBlock}') is after spower_update_start_offset  '${SPOWER_UPDATE_START_OFFSET-WORKREPORT_PROCESSOR_OFFSET}', wait for spower update complete...`);
           break;
         }
 
