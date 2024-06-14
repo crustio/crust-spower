@@ -318,11 +318,7 @@ function calculateFileSpower(fileSize: bigint, reportedReplicaCount: number): bi
         reportedReplicaCount >= entry.range[0] && reportedReplicaCount <= entry.range[1]
     );
 
-  if (reportedReplicaCount == 0) {
-    return BigInt(0);
-  } else {
-    return fileSize + fileSize * BigInt(alpha*multiplier) / BigInt(multiplier);
-  }
+  return fileSize + fileSize * BigInt(alpha*multiplier) / BigInt(multiplier);
 }
 
 async function updateDB(toDeleteCids: string[], toUpdateRecords: FilesV2Record[], lastSpowerUpdateBlock: number, database: Sequelize, logger: Logger, filesV2Op: FilesV2Operator, configOp: ConfigOperator) {
