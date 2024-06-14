@@ -1,7 +1,7 @@
 import { ApiPromise, Keyring, WsProvider } from '@polkadot/api';
 import { BlockHash, Header, SignedBlock, DispatchError, Extrinsic, EventRecord } from '@polkadot/types/interfaces';
 import { KeyringPair } from '@polkadot/keyring/types';
-import { cidFromStorageKey, formatError, hexToString, parseObj, queryToObj, sleep } from '../utils';
+import { cidFromStorageKey, formatError, hexToString, parseObj, queryToObj, sleep, stringToHex, stringifyEx } from '../utils';
 import { typesBundleForPolkadot, crustTypes } from '@crustio/type-definitions';
 import _ from 'lodash';
 import { SLOT_LENGTH } from '../utils/consts';
@@ -17,8 +17,6 @@ import { u8aToU8a } from '@polkadot/util';
 import { createTypeUnsafe } from '@polkadot/types/create';
 
 export type Identity = typeof crustTypes.swork.types.Identity;
-// export type FileInfoV2 = typeof crustTypes.market.types.FileInfoV2;
-// export type Replica = typeof crustTypes.market.types.Replica;
 
 // TODO: Move the definition to crust.js lib
 const customTypes = {
@@ -326,17 +324,17 @@ export default class CrustApi {
           const reporter = data[1];
           const owner = data[2];
 
-          let workReport = {
+          let workReport: WorkReportsToProcess = {
               sworker_anchor: sworkerAnchor.toString(),
-              report_slot: report_slot,
+              report_slot: parseObj(report_slot),
               report_block: atBlock,
               extrinsic_index: exIdx,
               reporter: reporter.toString(),
               owner: owner.toString(),
-              reported_srd_size: reported_srd_size ? reported_srd_size : 0,
-              reported_files_size: reported_files_size ? reported_files_size : 0,
-              added_files: added_files ? added_files : [],
-              deleted_files: deleted_files ? deleted_files : []
+              reported_srd_size: reported_srd_size ? parseObj(reported_srd_size): BigInt(0),
+              reported_files_size: reported_files_size ? parseObj(reported_files_size) : BigInt(0),
+              added_files: added_files ? parseObj(added_files) : [],
+              deleted_files: deleted_files ? parseObj(deleted_files) : []
           };
 
           workReportsToProcess.push(workReport);
@@ -520,7 +518,7 @@ export default class CrustApi {
     if (block.isEmpty) {
       return 0;
     }
-    return block as any;   
+    return parseInt(block as any);   
   }
 
   async updateSpower(
@@ -534,19 +532,29 @@ export default class CrustApi {
     let startTime = performance.now();
     await this.withApiReady();
     try {
-      // Construct the file_changed_map argument body, the argument type is as follows on chain:
-      //    Map<cid, (file_size, Map<owner, (who, anchor, created_at)>)>
-      let fileChangedMapBody = new Map<string, any[]>();
+      // Construct the update_spower call arguments body, the argument type is as follows on chain:
+      // changed_spowers: 
+      //     Vector of (SworkerAnchor, changed_spower_value)
+      // changed_files:
+      //     Vec<(cid, spower, Vec<(owner, who, anchor, created_at)>)>
+      let changed_spowers = [];
+      let changed_files = [];
+      for (const [anchor, changedSpower] of sworkerChangedSpowerMap) {
+        const entry = [anchor, changedSpower];
+        changed_spowers.push(entry);
+      }
       for (const [cid, changedFileInfo] of filesChangedMap) {
-        let replicaMap = new Map<string, any[]>();
+        let replicas_vec = [];
         for (const [owner, replica] of changedFileInfo.replicas) {
-          replicaMap.set(owner, [replica.who, replica.anchor, replica.created_at]);
+          const replica_entry = [owner, replica.who, replica.anchor, replica.created_at];
+          replicas_vec.push(replica_entry);
         }
-        fileChangedMapBody.set(cid, [changedFileInfo.spower, replicaMap]);
+        const file_entry = [stringToHex(cid), changedFileInfo.spower, replicas_vec];
+        changed_files.push(file_entry);
       };
 
-      // Construct the transaction object
-      const tx = this.api.tx.swork.updateSpower(sworkerChangedSpowerMap, fileChangedMapBody); 
+      // Create the transaction object
+      const tx = this.api.tx.swork.updateSpower(changed_spowers, changed_files); 
 
       // Send the transaction
       let txRes = queryToObj(await this.handleTxWithLock('swork', async () => this.sendTx(tx)));

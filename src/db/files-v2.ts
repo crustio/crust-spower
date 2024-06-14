@@ -1,4 +1,4 @@
-import { Op, Sequelize, Transaction } from 'sequelize';
+import { Model, Op, Sequelize, Transaction } from 'sequelize';
 import { FilesV2Operator, FilesV2Record} from '../types/database';
 import _ from 'lodash';
 
@@ -53,7 +53,10 @@ export function createFilesV2Operator(db: Sequelize): FilesV2Operator {
 
     const result = await FilesV2Record.findAll({
       attributes: ['cid'],
-      where: { need_sync: true },
+      where: { 
+        need_sync: true,
+        is_spower_updating: false
+       },
       limit: count
     });
 
@@ -88,23 +91,34 @@ export function createFilesV2Operator(db: Sequelize): FilesV2Operator {
 
   const updateRecords = async (
     records: FilesV2Record[],
+    updateFields: string[],
     transaction?: Transaction
   ): Promise<number> => {
 
-    const updateFields = Object.keys(FilesV2Record.getAttributes()).filter(field => field !== 'cid');
-    updateFields.push('last_updated');
+    // if (!updateFields.includes('last_updated')){
+    //   updateFields.push('last_updated');
+    // }
 
+    // If record is Model type, need to transform it to object
+    let toUpdateRecords = [];
+    for (const record of records) {
+      if (record instanceof Model) {
+        toUpdateRecords.push(record.toJSON());
+      } else {
+        toUpdateRecords.push(record);
+      }
+    }
     let result = [];
     if (_.isNil(transaction)) {
       // Start a new transaction if no transaction specified
       await db.transaction(async (tx) => {
-        result = await FilesV2Record.bulkCreate(records, {
+        result = await FilesV2Record.bulkCreate(toUpdateRecords, {
           updateOnDuplicate: updateFields as any,
           transaction: tx
         });
       });
     } else {
-      result = await FilesV2Record.bulkCreate(records, {
+      result = await FilesV2Record.bulkCreate(toUpdateRecords, {
         updateOnDuplicate: updateFields as any,
         transaction
       });
@@ -118,7 +132,9 @@ export function createFilesV2Operator(db: Sequelize): FilesV2Operator {
     upsertFields: string[]
   ): Promise<number> => {
 
-    upsertFields.push('last_updated');
+    // if (!upsertFields.includes('last_updated')){
+    //   upsertFields.push('last_updated');
+    // }
 
     let result = [];
     await db.transaction(async (transaction) => {

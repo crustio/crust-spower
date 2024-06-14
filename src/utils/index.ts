@@ -134,3 +134,22 @@ export function cidFromStorageKey(key: string): string | null {
   const cid = Buffer.from(cidInHex, 'hex').toString().replace(/[^\x00-\x7F]/g, ''); // eslint-disable-line
   return cid;
 }
+
+export function stringifyEx(toStringifyObj: any): string {
+  const replacer = (_key, value) => {
+    if (typeof value === 'bigint') {
+      return parseInt(value.toString());
+    }
+    if (value instanceof Map) {
+      const obj = {};
+      value.forEach((value, key) => {
+        obj[key] = value;
+      });
+      return obj;
+    }
+    
+    return value;
+  };
+  
+  return JSON.stringify(toStringifyObj, replacer, 2);
+}

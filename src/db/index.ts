@@ -1,5 +1,5 @@
 import { SPowerConfig } from '../types/spower-config';
-import { Sequelize } from 'sequelize';
+import { Sequelize, Transaction } from 'sequelize';
 import { createChildLogger } from '../utils/logger';
 import { applyMigration } from './migration';
 import { ConfigRecord, FilesV2Record, WorkReportsToProcessRecord, } from '../types/database';
@@ -34,6 +34,7 @@ export async function loadDb(config: SPowerConfig): Promise<Sequelize> {
     port: dbConfig.port,
     logging: false,
     timezone: '+08:00',
+    isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
     define: {
       freezeTableName: true,
       timestamps: true,

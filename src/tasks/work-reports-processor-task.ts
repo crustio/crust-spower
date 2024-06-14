@@ -9,7 +9,6 @@ import { AppContext } from '../types/context';
 import { SimpleTask } from '../types/tasks';
 import { IsStopped, makeIntervalTask } from './task-utils';
 import { FileToUpdate, ReplicaToUpdate, WorkReportsToProcess } from '../types/chain';
-import { stringToHex } from '../utils';
 import _ from 'lodash';
 import Bluebird from 'bluebird';
 import { REPORT_SLOT, SPOWER_UPDATE_START_OFFSET, WORKREPORT_PROCESSOR_OFFSET } from '../utils/consts';
@@ -169,8 +168,8 @@ function createFileReplicas(filesInfoMap: Map<string, FileToUpdate>, wr: WorkRep
     }
 
     let fileReplica: ReplicaToUpdate = {
-      reporter: stringToHex(wr.reporter),
-      owner: stringToHex(wr.owner),
+      reporter: wr.reporter,
+      owner: wr.owner,
       sworker_anchor: wr.sworker_anchor,
       report_slot: wr.report_slot,
       report_block: wr.report_block,

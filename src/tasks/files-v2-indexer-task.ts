@@ -254,9 +254,11 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
           if (!_.isNil(fileInfo) && !_.isEmpty(fileInfo.replicas) && fileInfo.expired_at > curBlock) {
             let minimumCreateAtBlock: number = Number.MAX_VALUE;
             for (const [_owner,replica] of fileInfo.replicas) {
-              if (!_.isNil(replica.created_at)) {
-                if (replica.created_at < minimumCreateAtBlock) {
-                  minimumCreateAtBlock = parseInt(replica.created_at as any);
+              let createdAt = replica.created_at as any;
+              if (!_.isNil(createdAt) && !createdAt.isEmpty) {
+                createdAt = createdAt as number;
+                if (createdAt < minimumCreateAtBlock) {
+                  minimumCreateAtBlock = createdAt;
                 } 
               } else {
                 minimumCreateAtBlock = 0;

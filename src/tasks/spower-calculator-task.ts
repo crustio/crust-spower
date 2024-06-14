@@ -13,8 +13,9 @@ import { createFilesV2Operator } from '../db/files-v2';
 import { createConfigOps } from '../db/configs';
 import { KeyIndexChangedLastIndexBlock } from './files-v2-indexer-task';
 import { convertBlockNumberToReportSlot } from '../utils';
-import { FilesV2Record } from '../types/database';
+import { ConfigOperator, FilesV2Operator, FilesV2Record } from '../types/database';
 import { REPORT_SLOT, SPOWER_UPDATE_END_OFFSET, SPOWER_UPDATE_START_OFFSET } from '../utils/consts';
+import { Sequelize } from 'sequelize';
 
 const KeyLastSpowerUpdateBlock = 'spower-calculator-task:last-spower-update-block';
 const KeyUpdatingRecords = 'spower-calculator-task:updating-records';
@@ -100,34 +101,15 @@ async function calculateSpower(
           logger.warn(`Inconsistent 'LastSpowerUpdateBlock' between on chain (${lastSpowerUpdateBlockOnChain}) and local (${lastSpowerUpdateBlock}).
                        Mark the is_spower_updating records as success`);
 
-          const updatingRecords = await configOp.readJson(KeyUpdatingRecords) as UpdatingRecords;
-          if (!_.isNil(updatingRecords) && !_.isEmpty(updatingRecords)) {
-            const toDeleteCids = updatingRecords.toDeleteCids;
-            // Delete is_closed records
-            if (!_.isNil(toDeleteCids) && toDeleteCids.length > 0) {
-              logger.debug(`Delete ${toDeleteCids.length} records from files-v2 table`);
-              await filesV2Op.deleteRecords(toDeleteCids);
-            }
-
-            // Update existing record data, which contains the updated file_info
-            const toUpdateRecords = updatingRecords.toUpdateRecords;
-            if (!_.isNil(toUpdateRecords) && toUpdateRecords.length > 0) {
-              logger.debug(`Update ${toUpdateRecords.length} records in files-v2 table`);
-              for (const record of toUpdateRecords) {
-                record.last_spower_update_block = lastSpowerUpdateBlockOnChain;
-                record.last_spower_update_time = new Date();
-              }
-              await filesV2Op.updateRecords(toUpdateRecords);
-            }
-          }
-
-          // Update the lastSpowerUpdateBlock to config DB
           lastSpowerUpdateBlock = lastSpowerUpdateBlockOnChain;
-          await configOp.saveInt(KeyLastSpowerUpdateBlock, lastSpowerUpdateBlockOnChain);
+          const toRestoreUpdatingRecords = await configOp.readJson(KeyUpdatingRecords) as UpdatingRecords;
+          if (!_.isNil(toRestoreUpdatingRecords) && !_.isEmpty(toRestoreUpdatingRecords)) {
+            const toDeleteCids = toRestoreUpdatingRecords.toDeleteCids;
+            const toUpdateRecords = toRestoreUpdatingRecords.toUpdateRecords;
+            // Update multiple DB records in single transaction
+            await updateDB(toDeleteCids, toUpdateRecords, lastSpowerUpdateBlockOnChain, database, logger, filesV2Op, configOp);
+          }
         }
-        // Clear the to-restore records to avoid any stale data
-        await filesV2Op.clearIsSpowerUpdating();
-        await configOp.saveJson(KeyUpdatingRecords, {});
         
         //////////////////////////////////////////////////////////////
         // Perform the calculation
@@ -272,7 +254,7 @@ async function calculateSpower(
         
         // 4. Update the chain data with sworkerChangedSpowerMap, fileNewSpowerMap, updatedBlocks
 
-        // 4.1 Mark the record is updating and save the to update records, which are used to restore the records 
+        // 4.1 Mark the record is updating and save them to update records, which are used to restore the records 
         //     when on chain update spower is success but client treat as failed (due to like network interuption, or client be killed or crashed)
         const updatingRecords: UpdatingRecords = {
           toDeleteCids: toDeleteCids,
@@ -287,36 +269,13 @@ async function calculateSpower(
 
         // 5. Update db status
         if (result === true) {
-          // Update all database records in a single transaction
-          await database.transaction(async (transaction) => {
-            // 5.1 Get last spower update block from chain
-            const newLastSpowerUpdateBlock = await api.getLastSpowerUpdateBlock();
+          // 5.1 Get last spower update block from chain
+          const newLastSpowerUpdateBlock = await api.getLastSpowerUpdateBlock();
 
-            // 5.2 Delete is_closed records
-            if (toDeleteCids.length > 0) {
-              logger.debug(`Delete ${toDeleteCids.length} records from files-v2 table`);
-              await filesV2Op.deleteRecords(toDeleteCids, transaction);
-            }
-
-            // 5.3 Update existing record data, which contains the updated file_inf)
-            if (toUpdateRecords.length > 0) {
-              logger.debug(`Update ${toUpdateRecords.length} records in files-v2 table`);
-              for (const record of toUpdateRecords) {
-                record.last_spower_update_block = newLastSpowerUpdateBlock;
-                record.last_spower_update_time = new Date();
-              }
-              await filesV2Op.updateRecords(toUpdateRecords, transaction);
-            }
-
-            // 5.4 Clear the to-restore records
-            await filesV2Op.clearIsSpowerUpdating();
-            await configOp.saveJson(KeyUpdatingRecords, {}, transaction);
-
-            // 5.5 Update config
-            await configOp.saveInt(KeyLastSpowerUpdateBlock, newLastSpowerUpdateBlock, transaction);
-          });
+          // 5.2 Update multiple DB records in single transaction
+          await updateDB(toDeleteCids, toUpdateRecords, newLastSpowerUpdateBlock, database, logger, filesV2Op, configOp);
         } else {
-          logger.warn('Call swork.update_spower failed, wait a while and check later');
+          logger.error('Call swork.update_spower failed, wait a while and try later');
         }
       } catch (err) {
         logger.error(`💥 Error to calculate spower: ${err}`);
@@ -357,6 +316,36 @@ function calculateFileSpower(fileSize: bigint, reportedReplicaCount: number): bi
   } else {
     return fileSize + fileSize * BigInt(alpha*multiplier) / BigInt(multiplier);
   }
+}
+
+async function updateDB(toDeleteCids: string[], toUpdateRecords: FilesV2Record[], lastSpowerUpdateBlock: number, database: Sequelize, logger: Logger, filesV2Op: FilesV2Operator, configOp: ConfigOperator) {
+  // Update all database records in a single transaction
+  await database.transaction(async (transaction) => {
+
+    // Delete is_closed records
+    if (toDeleteCids.length > 0) {
+      logger.debug(`Delete ${toDeleteCids.length} records from files-v2 table`);
+      await filesV2Op.deleteRecords(toDeleteCids, transaction);
+    }
+
+    // Update existing record data, which contains the updated file_info
+    if (toUpdateRecords.length > 0) {
+      logger.debug(`Update ${toUpdateRecords.length} records in files-v2 table`);
+      for (const record of toUpdateRecords) {
+        record.last_spower_update_block = lastSpowerUpdateBlock;
+        record.last_spower_update_time = new Date();
+        record.is_spower_updating = false;
+      }
+      const updateFields = ['file_info', 'last_spower_update_block', 'last_spower_update_time', 'next_spower_update_block', 'is_spower_updating'];
+      await filesV2Op.updateRecords(toUpdateRecords, updateFields, transaction);
+    }
+
+    // Clear the to-restore records
+    await configOp.saveJson(KeyUpdatingRecords, {}, transaction);
+
+    // Update the KeyLastSpowerUpdateBlock config
+    await configOp.saveInt(KeyLastSpowerUpdateBlock, lastSpowerUpdateBlock,transaction);
+  });
 }
 
 export async function createSpowerCalculator(

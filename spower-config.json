@@ -10,7 +10,7 @@
     "filesV2IndexAllKeyBatchSize": "600",
     "filesV2IndexChangedSyncInterval": "10",
     "spowerReadyPeriod": "10",
-    "spowerCalculateBatchSize": "2"
+    "spowerCalculateBatchSize": "3"
   },
   "telemetry": {
     "endPoint": "https://sm-submit.crust.network"

@@ -178,7 +178,7 @@ export interface FilesV2Operator {
   getNeedSync: (count: number) => Promise<string[]>;
   getNeedSpowerUpdateRecords: (count: number, currBlock: number) => Promise<FilesV2Record[]>;
   deleteRecords: (cids: string[], transaction?: Transaction) => Promise<number>;
-  updateRecords: (records: FilesV2Record[], transaction?: Transaction) => Promise<number>;
+  updateRecords: (records: FilesV2Record[], updateFields: string[], transaction?: Transaction) => Promise<number>;
   upsertRecords: (records: FilesV2Record[], upsertFields: string[]) => Promise<number>;
   getExistingCids: (cids: string[]) => Promise<string[]>;
   setIsSpowerUpdating: (cids: string[]) => Promise<number>;
