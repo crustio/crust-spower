@@ -1,0 +1,19 @@
+export interface ChainConfig {
+  endPoint: string;
+  placeOrderAccountsNumber: number;
+  placeOrderFrequency: number;
+}
+
+export interface DatabaseConfig {
+  dialect: string;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  database: string;
+}
+
+export interface SPowerConfig {
+  chain: ChainConfig;
+  database: DatabaseConfig;
+}
