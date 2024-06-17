@@ -27,10 +27,10 @@ async function processWorkReports(
   const configOp = createConfigOps(database);
   const workReportsOp = createWorkReportsToProcessOperator(database);
 
-  // The default blocks to process batch size is 15
+  // The default blocks to process batch size is 10
   // Right now there're around 1600 sworker nodes in the whole chain, 1600 work reports will be sent 
   // from the 10th to 399th block in one slot, that means 1600 wrs in 390 blocks, average 4~5 wrs/block
-  // 15 blocks will have around 75 work reports
+  // 10 blocks will have around 50 work reports
   let batchSize = config.chain.workReportsProcesserBatchSize;
   let workReportsProcessorInterval = config.chain.workReportsProcessorInterval;
 
@@ -127,6 +127,9 @@ async function processWorkReports(
             totalReplicasCount += added_files_array.length + deleted_files_array.length;
           }
         }
+        /// -------------------------------------------------------
+        /// TODO: Check whether exceeds the files count limit, if exceeds, use a smaller batch size
+
         logger.info(`Work reports count: ${totalWorkReportsCount}, Updated files count: ${filesInfoMap.size}, Updated Replicas count: ${totalReplicasCount}`);
 
         // ---------------------------------------------------------------
