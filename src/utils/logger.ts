@@ -28,12 +28,12 @@ const defaultLogger = createLogger({
   ),
   transports: [
     //
-    // - Write to all logs with level `info` and below to `crust-api-combined.log`.
-    // - Write all logs error (and below) to `crust-api-error.log`.
+    // - Write to all logs with level `info` and below to `crust-spower-combined.log`.
+    // - Write all logs error (and below) to `crust-spower-error.log`.
     //
     new transports.Console(),
-    new transports.File({ filename: 'crust-api-error.log', level: 'error' }),
-    new transports.File({ filename: 'crust-api-combined.log' }),
+    new transports.File({ filename: 'crust-spower-error.log', level: 'error' }),
+    new transports.File({ filename: 'crust-spower-combined.log' }),
   ],
 });
 
