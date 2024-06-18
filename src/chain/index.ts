@@ -448,7 +448,7 @@ export default class CrustApi {
         for (let index = 0; index < fileInfoV2MapFromChain.length; index++) {
           const cid = cidFromStorageKey(storageKeysInBatch[index]);
           const filesInfoV2Codec = fileInfoV2MapFromChain[index];
-          if (!_.isNil(filesInfoV2Codec)) {
+          if (!_.isNil(filesInfoV2Codec) && !filesInfoV2Codec.isEmpty) {
             // Decode the Codec to FileInfoV2 object 
             const input = u8aToU8a(filesInfoV2Codec.value);
             const registry = filesInfoV2Codec.registry;

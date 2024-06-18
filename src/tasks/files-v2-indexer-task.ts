@@ -218,14 +218,23 @@ async function indexChanged(
                 if (block % filesV2IndexChangedSyncInterval == 0) {
                   logger.info(`Sync FilesV2 data at block '${block}'`);
                   do {
-                      if (isStopped())
-                          return;
+                    if (isStopped())
+                        return;
 
-                      const isChangedCids = await filesV2Op.getNeedSync(filesV2SyncBatchSize);
-                      if (_.isEmpty(isChangedCids))
-                          break;
+                    const needSyncCids = await filesV2Op.getNeedSync(filesV2SyncBatchSize);
+                    if (_.isEmpty(needSyncCids))
+                        break;
 
-                      await syncFilesV2Data(isChangedCids, block, curBlock, context, logger);
+                    const syncedCids = await syncFilesV2Data(needSyncCids, block, curBlock, context, logger);
+
+                    // The difference between needSyncCids and syncedCids is the closed files
+                    // First IllegalFileClosed event already remove the file from chain, sworker listens to this event and
+                    // delete the file locally and report works as deleted_files, which would then be upsert into files_v2 table
+                    // as need_sync=1 again, so we need to mark them as closed here
+                    const closedCids = _.difference(needSyncCids, syncedCids);
+                    if (!_.isEmpty(closedCids)) {
+                      await filesV2Op.setIsClosed(closedCids, curBlock);
+                    }
                   }while(true);
 
                   // Update the last sync block
@@ -238,7 +247,7 @@ async function indexChanged(
     }
 }
 
-async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number, context: AppContext, logger: Logger) {
+async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number, context: AppContext, logger: Logger): Promise<string[]> {
     const { api, database, config } = context;
     const filesV2Op = createFilesV2Operator(database);
 
@@ -285,14 +294,18 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
           });
         }
 
-        const existCids = await filesV2Op.getExistingCids(cids);
-
         // Upsert to files_v2 table
+        const existCids = await filesV2Op.getExistingCids(cids);
         const upsertFields = ['file_info', 'last_sync_block', 'last_sync_time', 'need_sync', 'is_closed', 'next_spower_update_block']
         const affectedRows = await filesV2Op.upsertRecords(toUpsertRecords, upsertFields);
         
         logger.info(`Upsert ${fileInfoV2Map.size} files at block '${atBlock}' to files_v2 table: New - ${affectedRows - existCids.length}, Update: ${existCids.length}`);
+
+        // Return the actual synced cids list
+        return [...fileInfoV2Map.keys()];
     }
+
+    return [];
 }
 
 export async function createFilesV2Indexer(
