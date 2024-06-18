@@ -12,8 +12,12 @@ import { timeout } from '../utils/promise-utils';
 import {ITuple} from '@polkadot/types/types';
 import { SPowerConfig } from '../types/spower-config';
 import { TxRes } from '../types/chain';
+import { AppContext } from '../types/context';
+import { createConfigOps } from '../db/configs';
 
 export type Identity = typeof crustTypes.swork.types.Identity;
+
+const KeyMetadataInitialized = 'chain:metadata-initialized';
 
 // TODO: Move the definition to crust.js lib
 const customTypes = {
@@ -186,31 +190,50 @@ export default class CrustApi {
     return this.api.rpc.chain.getHeader();
   }
 
-  async initMetadata() {
+  async initMetadata(context: AppContext) {
+
+    const configOp = createConfigOps(context.database);
+    const isInitialized = await configOp.readInt(KeyMetadataInitialized);
+    if (!_.isNil(isInitialized) && isInitialized == 1) {
+      logger.info('⛓ Metadata already initialized, skip it.');
+      return;
+    }
+    logger.info('⛓ Init metadata...');
+    
     await this.withApiReady();
 
     const kr = new Keyring({ type: 'sr25519' });
+    kr.setSS58Format(66);
     const aliceKrp = kr.addFromUri('//Alice');
+    logger.debug(`alice: ${aliceKrp.address}`);
 
     // swork.setCode
     const tx1 = this.api.tx.swork.setCode('0x69f72f97fc90b6686e53b64cd0b5325c8c8c8d7eed4ecdaa3827b4ff791694c0', 10000000);
-    await this.sendTransaction('swork', 'swork.setCode', tx1, aliceKrp);
+    const sudoTx1 = this.api.tx.sudo.sudo(tx1);
+    await this.sendTransaction('swork', 'swork.setCode', sudoTx1, aliceKrp);
     
     // swork.registerNewTeePubkey
     const tx2 = this.api.tx.swork.registerNewTeePubkey('0xd4d39c00d78b1c11e6861a92dbb0e2d311cd573c7dc0eabae8335751a0d8b360');
-    await this.sendTransaction('swork', 'swork.registerNewTeePubkey', tx2, aliceKrp);
+    const sudoTx2 = this.api.tx.sudo.sudo(tx2);
+    await this.sendTransaction('swork', 'swork.registerNewTeePubkey', sudoTx2, aliceKrp);
 
     // swork.setSpowerSuperior
     const tx3 = this.api.tx.swork.setSpowerSuperior('cTHqXgHChchei9XmEaFnm6FCsGods1XA43kbMkyF5UmLTGT9D');
-    await this.sendTransaction('swork', 'swork.setSpowerSuperior', tx3, aliceKrp);
+    const sudoTx3 = this.api.tx.sudo.sudo(tx3);
+    await this.sendTransaction('swork', 'swork.setSpowerSuperior', sudoTx3, aliceKrp);
 
     // market.setSpowerSuperior
     const tx4 = this.api.tx.market.setSpowerSuperior('cTHqXgHChchei9XmEaFnm6FCsGods1XA43kbMkyF5UmLTGT9D');
-    await this.sendTransaction('market', 'market.setSpowerSuperior', tx4, aliceKrp);
+    const sudoTx4 = this.api.tx.sudo.sudo(tx4);
+    await this.sendTransaction('market', 'market.setSpowerSuperior', sudoTx4, aliceKrp);
 
     // market.setEnableMarket
     const tx5 = this.api.tx.market.setEnableMarket(true);
-    await this.sendTransaction('market', 'market.setEnableMarket', tx5, aliceKrp);
+    const sudoTx5 = this.api.tx.sudo.sudo(tx5);
+    await this.sendTransaction('market', 'market.setEnableMarket', sudoTx5, aliceKrp);
+
+    // Mark as initialized
+    await configOp.saveInt(KeyMetadataInitialized, 1);
   }
 
   async transferTokens(sender: KeyringPair, recipient: string, amount: number) {
@@ -236,7 +259,7 @@ export default class CrustApi {
     if (txRes.status == 'success') {
       logger.info(`${method} successfully`);
     } else {
-      throw new Error(`${method} failed: ${txRes.details}`);
+      throw new Error(`${method} failed: ${txRes.message}`);
     }
   };
 

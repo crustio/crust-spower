@@ -17,7 +17,7 @@ export const MaxNoNewBlockDuration = Dayjs.duration({
 });
 
 async function main() {
-  logger.info('starting spower');
+  logger.info('starting spower test program');
   const config = await loadConfig(ConfigFile);
   logger.debug('spower config loaded: %o', config);
   const api = await timeoutOrError(
@@ -43,8 +43,8 @@ async function main() {
     logger.info('reload chain api, waiting.....');
     await api.reconnect();
 
-    // initialize metadata
-    await api.initMetadata();
+    // initialize metadata if not done yet
+    await api.initMetadata(context);
 
     // run the place-order task
     runPlaceOrderTask(context);

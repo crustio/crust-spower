@@ -1,5 +1,4 @@
 import { Dayjs } from 'dayjs';
-import { WorkReportsToProcess } from './chain';
 import { CreationOptional, DataTypes, InferAttributes, InferCreationAttributes, Model, Sequelize, Transaction } from 'sequelize';
 
 export type DbResult<T> = Promise<T | null>;
@@ -131,7 +130,7 @@ export class OrdersRecord extends Model<InferAttributes<OrdersRecord>, InferCrea
     },
   }, {
     sequelize,
-    tableName: 'accounts'
+    tableName: 'orders'
   });
   }
 };
