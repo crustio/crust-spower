@@ -16,7 +16,7 @@ export class ConfigRecord extends Model {
           primaryKey: true,
         },
         content: {
-          type: DataTypes.TEXT,
+          type: DataTypes.TEXT('medium'),
           allowNull: true,
         },
         last_updated: {
@@ -68,7 +68,7 @@ export class WorkReportsToProcessRecord extends Model<InferAttributes<WorkReport
       unique: true,
     },
     work_reports: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT('medium'),
       allowNull: false,
     },
     status: {
@@ -122,7 +122,7 @@ export class FilesV2Record extends Model<InferAttributes<FilesV2Record>, InferCr
         primaryKey: true,
       },
       file_info: {
-        type: DataTypes.TEXT,
+        type: DataTypes.TEXT('medium'),
         allowNull: true,
       },
       last_sync_block: {

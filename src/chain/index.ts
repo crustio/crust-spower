@@ -492,13 +492,13 @@ export default class CrustApi {
 
       // Send the transaction
       let txRes = queryToObj(await this.handleTxWithLock('market', async () => this.sendTx(tx)));
-      txRes = txRes ? txRes : {status:'failed', details: 'Null txRes'};
+      txRes = txRes ? txRes : {status:'failed', message: 'Null txRes'};
       if (txRes.status == 'success') {
         logger.info(`Update relicas data to chain successfully`);
         return true;
       }
       else {
-        logger.error(`Failled to update replicas data to chain: ${txRes.details}`);
+        logger.error(`Failled to update replicas data to chain: ${txRes.message}`);
         return false;
       }
     } catch (err) {
@@ -558,13 +558,13 @@ export default class CrustApi {
 
       // Send the transaction
       let txRes = queryToObj(await this.handleTxWithLock('swork', async () => this.sendTx(tx)));
-      txRes = txRes ? txRes : {status:'failed', details: 'Null txRes'};
+      txRes = txRes ? txRes : {status:'failed', message: 'Null txRes'};
       if (txRes.status == 'success') {
         logger.info(`Update spower data to chain successfully`);
         return true;
       }
       else {
-        logger.error(`Failled to update spower data to chain: ${txRes.details}`);
+        logger.error(`Failled to update spower data to chain: ${txRes.message}`);
         return false;
       }
     } catch (err) {
@@ -581,7 +581,7 @@ export default class CrustApi {
     if (this.txLocker[lockName]) {
       return {
         status: 'failed',
-        details: 'Tx Locked',
+        message: 'Tx Locked',
       };
     }
 

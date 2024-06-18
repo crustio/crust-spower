@@ -179,46 +179,50 @@ async function calculateSpower(
         for (const record of filesToCalcRecords) {
           const cid = record.cid;
           const fileInfoV2 = fileInfoV2Map.get(cid);
-          const replicasMap: Map<string, Replica> = fileInfoV2.replicas;
-          for (const [owner, replica] of replicasMap) {
-            const sworkerAnchor = replica.anchor;
-            let changedSpower = sworkerChangedSpowerMap.get(sworkerAnchor);
-            if (_.isNil(changedSpower)) {
-              changedSpower = BigInt(0);
-              sworkerChangedSpowerMap.set(sworkerAnchor, changedSpower);
-            }
+          
+          let replicasMap = new Map<string, Replica>();
+          if (!_.isNil(fileInfoV2)) {
+            replicasMap = fileInfoV2.replicas;
+            for (const [owner, replica] of replicasMap) {
+              const sworkerAnchor = replica.anchor;
+              let changedSpower = sworkerChangedSpowerMap.get(sworkerAnchor);
+              if (_.isNil(changedSpower)) {
+                changedSpower = BigInt(0);
+                sworkerChangedSpowerMap.set(sworkerAnchor, changedSpower);
+              }
 
-            // For closed files, newSpower is 0
-            const newSpower = record.is_closed ? BigInt(0) : fileNewSpowerMap.get(cid); 
+              // For closed files, newSpower is 0
+              const newSpower = record.is_closed ? BigInt(0) : fileNewSpowerMap.get(cid); 
 
-            if (_.isNil(replica.created_at)) {
-              // Already use spower
-              changedSpower += (newSpower - BigInt(fileInfoV2.spower));
-            } else {
-              // Not use spower yet, file_size is the oldSpower
-              if (record.is_closed) {
-                changedSpower += (newSpower - BigInt(fileInfoV2.file_size));
+              if (_.isNil(replica.created_at)) {
+                // Already use spower
+                changedSpower += (newSpower - BigInt(fileInfoV2.spower));
               } else {
-                // For new replicas, only update to spower if already pass the spowerReadyPeriod
-                if (replica.created_at + spowerReadyPeriod <= curBlock) {
+                // Not use spower yet, file_size is the oldSpower
+                if (record.is_closed) {
                   changedSpower += (newSpower - BigInt(fileInfoV2.file_size));
+                } else {
+                  // For new replicas, only update to spower if already pass the spowerReadyPeriod
+                  if (replica.created_at + spowerReadyPeriod <= curBlock) {
+                    changedSpower += (newSpower - BigInt(fileInfoV2.file_size));
 
-                  // Update the created_at to None
-                  replica.created_at = null;
+                    // Update the created_at to None
+                    replica.created_at = null;
 
-                  // Add to the filesChangedMap
-                  let changedFileInfoV2 = filesChangedMap.get(cid);
-                  changedFileInfoV2.replicas.set(owner, replica);
+                    // Add to the filesChangedMap
+                    let changedFileInfoV2 = filesChangedMap.get(cid);
+                    changedFileInfoV2.replicas.set(owner, replica);
+                  }
                 }
               }
+              
+              sworkerChangedSpowerMap.set(sworkerAnchor, changedSpower);
+
+              // Update the file's new spower
+              fileInfoV2.spower = newSpower;
             }
-            
-            sworkerChangedSpowerMap.set(sworkerAnchor, changedSpower);
-
-            // Update the file's new spower
-            fileInfoV2.spower = newSpower;
           }
-
+          
           if (!record.is_closed) {
             // Re-calculate the next_spower_update_block for this file record
             let nextSpowerUpdateBlock = null;
@@ -263,6 +267,7 @@ async function calculateSpower(
 
         // 4.1 Mark the record is updating and save them to update records, which are used to restore the records 
         //     when on chain update spower is success but client treat as failed (due to like network interuption, or client be killed or crashed)
+        logger.debug(`Save the to-restore data to config table`);
         const updatingRecords: UpdatingRecords = {
           toDeleteCids: toDeleteCids,
           toUpdateRecords: toUpdateRecords

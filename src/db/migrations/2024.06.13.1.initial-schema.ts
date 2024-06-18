@@ -27,7 +27,7 @@ async function createConfigTable(sequelize: QueryInterface) {
         primaryKey: true,
       },
       content: {
-        type: DataTypes.TEXT,
+        type: DataTypes.TEXT('medium'),
         allowNull: true,
       },
       last_updated: {
@@ -63,7 +63,7 @@ async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
           unique: true,
         },
         work_reports: {
-          type: DataTypes.TEXT,
+          type: DataTypes.TEXT('medium'),
           allowNull: false,
         },
         status: {
@@ -112,7 +112,7 @@ async function createFilesV2Table(sequelize: QueryInterface) {
           primaryKey: true,
         },
         file_info: {
-          type: DataTypes.TEXT,
+          type: DataTypes.TEXT('medium'),
           allowNull: true,
         },
         last_sync_block: {
