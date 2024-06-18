@@ -1,7 +1,7 @@
 import { ApiPromise, Keyring, WsProvider } from '@polkadot/api';
 import { BlockHash, Header, SignedBlock, DispatchError, } from '@polkadot/types/interfaces';
 import { KeyringPair } from '@polkadot/keyring/types';
-import { formatError, queryToObj, sleep, } from '../utils';
+import { formatError, parseObj, queryToObj, sleep } from '../utils';
 import { typesBundleForPolkadot, crustTypes } from '@crustio/type-definitions';
 import _ from 'lodash';
 import { logger } from '../utils/logger';
@@ -16,6 +16,7 @@ import { AppContext } from '../types/context';
 import { createConfigOps } from '../db/configs';
 
 export type Identity = typeof crustTypes.swork.types.Identity;
+export type Group = typeof crustTypes.swork.types.Group;
 
 const KeyMetadataInitialized = 'chain:metadata-initialized';
 
@@ -42,7 +43,7 @@ export default class CrustApi {
   private api!: ApiPromise;
   private latestBlock = 0;
   private subLatestHead: VoidFn = null;
-  private txLocker = {market: false, swork: false};
+  private txLocker = {market: false, swork: false, staking: false};
 
   constructor(config: SPowerConfig) {
     this.addr = config.chain.endPoint;
@@ -253,9 +254,53 @@ export default class CrustApi {
     await this.sendTransaction('market', 'market.placeStorageOrder', tx, sender);
   }
 
+  async getGroup(groupAddress: string): Promise<Group> {
+    await this.withApiReady();
+
+    const value = await this.api.query.swork.groups(groupAddress);
+
+    if (!value.isEmpty) {
+      return parseObj(value);
+    }
+    return null;
+  }
+
+  async createGroup(group: KeyringPair) {
+    await this.withApiReady();
+
+    // Create group
+    const tx = this.api.tx.swork.createGroup();
+    
+    await this.sendTransaction('swork', 'swork.createGroup', tx, group);
+  }
+
+  async addMemberToAllowList(memberAddress: string, groupAccount: KeyringPair) {
+    await this.withApiReady();
+
+    const tx = this.api.tx.swork.addMemberIntoAllowList(memberAddress);
+
+    await this.sendTransaction('swork', 'swork.addMemberIntoAllowList', tx, groupAccount);
+  }
+
+  async joinGroup(memberAccount: KeyringPair, groupAddress: string) {
+    await this.withApiReady();
+
+    const tx = this.api.tx.swork.joinGroup(groupAddress);
+
+    await this.sendTransaction('swork', 'swork.joinGroup', tx, memberAccount);
+  }
+
+  async sworkerRegister(sworkerAccount: KeyringPair, code: string, teePubkey: string) {
+    await this.withApiReady();
+
+    const tx = this.api.tx.swork.registerWithDeauthChain(sworkerAccount.address, code, [], [], teePubkey, []);
+
+    await this.sendTransaction('swork', 'swork.registerWithDeauthChain', tx, sworkerAccount);
+  }
+
   private async sendTransaction(lockName: string, method: string, tx: SubmittableExtrinsic, krp: KeyringPair) {
     let txRes = queryToObj(await this.handleTxWithLock(lockName, async () => this.sendTx(tx, krp)));
-    txRes = txRes ? txRes : {status:'failed', details: 'Null txRes'};
+    txRes = txRes ? txRes : {status:'failed', message: 'Null txRes'};
     if (txRes.status == 'success') {
       logger.info(`${method} successfully`);
     } else {
@@ -267,7 +312,7 @@ export default class CrustApi {
     if (this.txLocker[lockName]) {
       return {
         status: 'failed',
-        details: 'Tx Locked',
+        message: 'Tx Locked',
       };
     }
 

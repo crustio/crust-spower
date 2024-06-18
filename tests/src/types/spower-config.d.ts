@@ -2,6 +2,8 @@ export interface ChainConfig {
   endPoint: string;
   placeOrderAccountsNumber: number;
   placeOrderFrequency: number;
+  groupAccountsNumber: number;
+  sworkerAccountsNumber: number;
 }
 
 export interface DatabaseConfig {

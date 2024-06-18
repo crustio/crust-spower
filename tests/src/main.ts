@@ -49,6 +49,9 @@ async function main() {
     // run the place-order task
     runPlaceOrderTask(context);
 
+    // run the sworker simulator task
+    //runSworkerSimulatorTask(context);
+
     // keep alive
     do {
       await sleep(10 * 1000);

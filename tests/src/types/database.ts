@@ -134,3 +134,82 @@ export class OrdersRecord extends Model<InferAttributes<OrdersRecord>, InferCrea
   });
   }
 };
+
+/// ------------------------------------------------
+/// group_members table
+export class GroupMembersRecord extends Model<InferAttributes<GroupMembersRecord>, InferCreationAttributes<GroupMembersRecord>> {
+  declare id: CreationOptional<number>;
+  declare group_address: string
+  declare sworker_address: string;
+  declare last_updated: CreationOptional<Date>;
+  declare create_at: CreationOptional<Date>;
+  static initModel(sequelize: Sequelize) {
+    GroupMembersRecord.init({
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      allowNull: false,
+      primaryKey: true,
+    },
+    group_address: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    sworker_address: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    last_updated: {
+      type: DataTypes.DATE(3),
+      allowNull: false,
+    },
+    create_at: {
+      type: DataTypes.DATE(3),
+      allowNull: false,
+    },
+  }, {
+    sequelize,
+    tableName: 'group_members'
+  });
+  }
+};
+
+/// ------------------------------------------------
+/// sworker_keys table
+export class SworkerKeysRecord extends Model<InferAttributes<SworkerKeysRecord>, InferCreationAttributes<SworkerKeysRecord>> {
+  declare id: CreationOptional<number>;
+  declare sworker_address: string;
+  declare tee_pubkey: string;
+  declare last_updated: CreationOptional<Date>;
+  declare create_at: CreationOptional<Date>;
+  static initModel(sequelize: Sequelize) {
+    SworkerKeysRecord.init({
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      allowNull: false,
+      primaryKey: true,
+    },
+    sworker_address: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
+    },
+    tee_pubkey: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    last_updated: {
+      type: DataTypes.DATE(3),
+      allowNull: false,
+    },
+    create_at: {
+      type: DataTypes.DATE(3),
+      allowNull: false,
+    },
+  }, {
+    sequelize,
+    tableName: 'sworker_keys'
+  });
+  }
+};

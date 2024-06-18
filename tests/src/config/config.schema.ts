@@ -5,7 +5,9 @@ import { createChildLogger } from '../utils/logger';
 const chainConfigSchema = Joi.object().keys({
   endPoint: Joi.string().required(),
   placeOrderAccountsNumber: Joi.number().required(),
-  placeOrderFrequency: Joi.number().required()
+  placeOrderFrequency: Joi.number().required(),
+  groupAccountsNumber: Joi.number().required(),
+  sworkerAccountsNumber: Joi.number().required(),
 });
 
 const databaseConfigSchema = Joi.object().keys({

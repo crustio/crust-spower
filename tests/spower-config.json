@@ -2,7 +2,9 @@
   "chain": {
     "endPoint": "ws://localhost:9944",
     "placeOrderAccountsNumber": 3,
-    "placeOrderFrequency": 20
+    "placeOrderFrequency": 5,
+    "groupAccountsNumber": 3,
+    "sworkerAccountsNumber": 6 
   },
   "database": {
     "dialect": "mysql",
