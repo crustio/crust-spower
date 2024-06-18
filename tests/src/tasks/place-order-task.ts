@@ -83,22 +83,27 @@ async function generateOrders(context: AppContext, accountKrps: KeyringPair[]) {
       // 1. Select random account
       const randomIndex = Math.floor(Math.random() * accountKrps.length);
       const krp = accountKrps[randomIndex];
-      logger.debug(`Selected account: ${krp.address}`);
+      logger.info(`Selected account: ${krp.address}`);
 
       // 2. Generate random file content with random file size (10B ~ 1MB)
       const randomFileSize = Math.floor(Math.random() * (1024 * 1024 - 10 + 1) + 10); // 10B to 1MB;
-      logger.debug(`Generating random file content with size: ${randomFileSize}`);
+      logger.info(`Generating random file content with size: ${randomFileSize}`);
       const fileContent = createHash('sha256').update(Math.random().toString()).digest('hex').repeat(randomFileSize / 64).slice(0, randomFileSize);
 
       // 3. Upload to IPFS
-      logger.debug(`Uploading file to IPFS...`);
-      const { cid, size } = await uploadToIPFS(fileContent, krp);
-      logger.debug(`Uploaded file to IPFS, cid: ${cid}, size: ${size}`);
+      logger.info(`Uploading file to IPFS...`);
+      let { cid, size } = await uploadToIPFS(fileContent, krp);
+      logger.info(`Uploaded file to IPFS, cid: ${cid}, size: ${size}`);
 
       // 4. Place storage order to crust
-      logger.debug(`Placing storage order to crust...`);
+      // Set the size to a smaller value to mock the illegalFileClosed event, in 1/10 probability
+      if (Math.random() < 0.1) {
+        size = size - 1;
+        logger.info('💥 💥 Set the size to a smaller value to mock the illegalFileClosed event');
+      }
+      logger.info(`Placing storage order to crust...`);
       await api.placeStorageOrder(krp, cid, size);
-      logger.debug(`Place storage order to crust successfully`);
+      logger.info(`Place storage order to crust successfully`);
       
       // 5. Save order to DB
       await OrdersRecord.create({
