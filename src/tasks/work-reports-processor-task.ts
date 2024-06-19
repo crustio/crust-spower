@@ -48,7 +48,7 @@ async function processWorkReports(
       // The spower-calculator-task will calculate the spower within the 400th ~ 490th block within the slot
       // Separate the replicas update and spower calculation to avoid race condition and inconsistent data
       const blockInSlot = curBlock % REPORT_SLOT;
-      if ( blockInSlot < WORKREPORT_PROCESSOR_OFFSET && blockInSlot > (SPOWER_UPDATE_START_OFFSET-WORKREPORT_PROCESSOR_OFFSET) )  {
+      if ( blockInSlot < WORKREPORT_PROCESSOR_OFFSET || blockInSlot > (SPOWER_UPDATE_START_OFFSET-WORKREPORT_PROCESSOR_OFFSET) )  {
         logger.info(`Not in the work reports process block range, blockInSlot: ${blockInSlot}, keep waiting..`);
 
         let waitTime = 6000;

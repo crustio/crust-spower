@@ -77,7 +77,7 @@ async function indexWorkReports(
         // Update the last processed block
         lastIndexBlock = block;
         configOp.saveInt(KeyLastIndexBlockWrs, lastIndexBlock);
-    }
+      }
     } catch (err) {
       logger.error(`💥 Error to index work reports: ${err}`);
     }
