@@ -1,17 +1,28 @@
 import { AppContext } from '../types/context';
 import _ from 'lodash';
 import { createChildLogger } from '../utils/logger';
-import { AccountsRecord, GroupMembersRecord, OrdersRecord, SworkerKeysRecord } from '../types/database';
+import { AccountsRecord, FilesRecord, GroupMembersRecord, SworkerKeysRecord, WorkReportsRecord } from '../types/database';
 import { Keyring } from '@polkadot/api';
 import { KeyringPair } from '@polkadot/keyring/types';
 import { mnemonicGenerate, randomAsU8a  } from '@polkadot/util-crypto';
 import { assert } from 'console';
 import { u8aToHex } from '@polkadot/util';
+import { REPORT_SLOT, SPOWER_UPDATE_START_OFFSET, WORKREPORT_PROCESSOR_OFFSET } from '../utils/consts';
+import Bluebird from 'bluebird';
+import { createConfigOps } from '../db/configs';
+import { Dayjs } from '../utils/datetime';
+import { MaxNoNewBlockDuration } from '../main';
+import { Mutex } from 'async-mutex';
+import { WorkReportOnChain } from '../types/chain';
+import { stringToHex } from '../utils';
+import { Sequelize } from 'sequelize';
 
 
 const logger = createChildLogger({ moduleId: 'sworker-simulator-tasks' });
 const SWORKER_CODE = '0x69f72f97fc90b6686e53b64cd0b5325c8c8c8d7eed4ecdaa3827b4ff791694c0';
+const KeySmanagerLastIndexBlock = 'sworker-simulator-task:smanager-last-index-block';
 
+const files_record_lock = new Mutex();
 /**
  * main entry funciton for the task
  */
@@ -39,9 +50,9 @@ export async function runSworkerSimulatorTask(
   logger.debug(`Configure group and sworker accounts`);
   await configureGroupAndSworkers(context, groupAccounts, sworkerAccounts, groupMembers, sworkerKeys);
   
-  // Generate orders
-  logger.debug(`Start to generate orders...`);
-  //await generateOrders(context, sworkerAccounts, groupMembersMap);
+  // Simulate Smanager and Sworkers
+  logger.debug(`Start to simulate Smanager and Sworkers...`);
+  await simulateSmanagerAndSworkers(context, sworkerAccounts, groupMembers, sworkerKeys);
 }
 
 async function getOrGeneratAccounts(context: AppContext, type: string, count: number): Promise<Map<string, KeyringPair>> {
@@ -73,7 +84,7 @@ async function getOrGeneratAccounts(context: AppContext, type: string, count: nu
     // Transfer 100 CRU from Alice to these generated accounts
     const aliceKrp = kr.addFromUri('//Alice');
     for (const account of generatedAccounts) {
-      await api.transferTokens(aliceKrp, account.address, 1_000_000_000_000_000);
+      await api.transferTokens(aliceKrp, account.address, 100_000_000_000_000);
       logger.debug(`Transferred 100 CRU to ${account.address}`);
     }
 
@@ -116,7 +127,7 @@ async function getOrGenerateTeePubkeys(context: AppContext, sworkerAddresses: st
 
         // Save to DB
         await database.transaction(async (transaction) => {
-            await GroupMembersRecord.bulkCreate(sworkerKeysList, {
+            await SworkerKeysRecord.bulkCreate(sworkerKeysList, {
                 transaction
             });
         });
@@ -202,88 +213,478 @@ async function configureGroupAndSworkers(
         logger.debug(`Group not exist, create it: ${groupAddress}`);
         await api.createGroup(groupAccount);
         
-        logger.debug(`Add sworker to allow list`);
         for (const sworkerAddress of members) {
-            await api.addMemberToAllowList(sworkerAddress, groupAccount);
+            await registerSworkerAndJoinGroup(context, sworkerAccounts.get(sworkerAddress), sworkerKeys.get(sworkerAddress), groupAccount);
         }
-
-        logger.debug(`sworker register`);
-        for (const sworkerAddress of members) {
-            await api.sworkerRegister(sworkerAccounts.get(sworkerAddress), SWORKER_CODE, sworkerKeys.get(sworkerAddress));
-        }
-
-        logger.debug(`sworker join group`) 
-        for (const sworkerAddress of members) {
-            await api.joinGroup(sworkerAccounts.get(sworkerAddress), groupAddress);
-        };
     } else {
-        const toAddAllowList = [];
         for (const sworkerAddress of members) {
             if (!group.members.includes(sworkerAddress)) {
-                toAddAllowList.push(sworkerAddress);
+                await registerSworkerAndJoinGroup(context, sworkerAccounts.get(sworkerAddress), sworkerKeys.get(sworkerAddress), groupAccount);
             }
         }
-
-        if (toAddAllowList.length > 0) {
-            logger.debug(`toAddAllowList: ${JSON.stringify(toAddAllowList)}`);
-            logger.debug(`group.allowList: ${JSON.stringify(group.allowlist)}`);
-            for (const sworkerAddress of toAddAllowList) {
-                if (!group.allowlist.includes(sworkerAddress)) {
-                    await api.addMemberToAllowList(sworkerAddress, groupAccount);
-
-                    await api.sworkerRegister(sworkerAccounts.get(sworkerAddress), SWORKER_CODE, sworkerKeys.get(sworkerAddress));
-
-                    await api.joinGroup(sworkerAccounts.get(sworkerAddress), groupAddress);
-                }
-            }   
-        }
-        
     }
   }
 }
 
-// async function generateOrders(context: AppContext, sworkerAccounts: Map<string, KeyringPair>, groupMembersMap: Map<string, string[]>) {
+async function registerSworkerAndJoinGroup(context: AppContext, sworkerAccount: KeyringPair, sworkerKey: string, groupAccount: KeyringPair) {
+    const { api } = context;
 
-//   const { api, config } = context;
-//   const placeOrderFrequency = config.chain.placeOrderFrequency;
+    logger.debug(`Register sworker '${sworkerAccount.address}' to group '${groupAccount.address}'`);
 
-//   while(true) {
-//     try {
-//       // Sleep a while
-//       await Bluebird.delay(1 * 1000);
+    await api.addMemberToAllowlist(sworkerAccount.address, groupAccount);
 
-//       // 1. Select random account
-//       const randomIndex = Math.floor(Math.random() * accountKrps.length);
-//       const krp = accountKrps[randomIndex];
-//       logger.debug(`Selected account: ${krp.address}`);
+    await api.sworkerRegister(sworkerAccount, SWORKER_CODE, sworkerKey);
 
-//       // 2. Generate random file content with random file size (10B ~ 1MB)
-//       const randomFileSize = Math.floor(Math.random() * (1024 * 1024 - 10 + 1) + 10); // 10B to 1MB;
-//       logger.debug(`Generating random file content with size: ${randomFileSize}`);
-//       const fileContent = createHash('sha256').update(Math.random().toString()).digest('hex').repeat(randomFileSize / 64).slice(0, randomFileSize);
+    const curBlock = api.latestFinalizedBlock();
+    const reportSlot = Math.floor(curBlock/REPORT_SLOT) * REPORT_SLOT;
+    const slotHash = await api.getBlockHash(reportSlot);
+    await api.sworkerReportWorks(sworkerAccount, {
+        curr_pk: sworkerKey,
+        ab_upgrade_pk: '0x',
+        slot: reportSlot,
+        slot_hash: slotHash.toString(),
+        reported_srd_size: BigInt(1_000_000_000_000),
+        reported_files_size: BigInt(0),
+        added_files: [],
+        deleted_files: [],
+        reported_srd_root: '0x',
+        reported_files_root: '0x',
+        sig: '0x',
+    });
 
-//       // 3. Upload to IPFS
-//       logger.debug(`Uploading file to IPFS...`);
-//       const { cid, size } = await uploadToIPFS(fileContent, krp);
-//       logger.debug(`Uploaded file to IPFS, cid: ${cid}, size: ${size}`);
+    await api.joinGroup(sworkerAccount, groupAccount.address);
+}
 
-//       // 4. Place storage order to crust
-//       logger.debug(`Placing storage order to crust...`);
-//       await api.placeStorageOrder(krp, cid, size);
-//       logger.debug(`Place storage order to crust successfully`);
-      
-//       // 5. Save order to DB
-//       await OrdersRecord.create({
-//         cid,
-//         file_size: BigInt(size),
-//         sender: krp.address
-//       });
+async function simulateSmanagerAndSworkers(context: AppContext, 
+    sworkerAccounts: Map<string, KeyringPair>, 
+    groupMembersMap: Map<string, string[]>,
+    sworkerKeys: Map<string, string>) {
 
-//       // Wait for the interval
-//       await Bluebird.delay(placeOrderFrequency * 1000);
-//     } catch(err) {
-//       logger.error(`💥 Error to generate orders: ${err}`);
-//     }
-//   } 
-// }
+  const { api, database } = context;
+  const configOp = createConfigOps(database);
 
+  // Get the reverse member->group map
+  const memberGroupMap = new Map<string, string>();
+  for (const [groupAddress, memberAddresses] of groupMembersMap) {
+    for (const memberAddress of memberAddresses) {
+        memberGroupMap.set(memberAddress, groupAddress);
+    }
+  }
+  // Run the sworker simulator for each sworker
+  for (const [sworkerAddress, sworkerAccount] of sworkerAccounts) {
+    // DO NOT use await here because we just want them to run parallelly
+    runSworkerSimulator(context, sworkerAccount, sworkerKeys.get(sworkerAddress), memberGroupMap.get(sworkerAddress));
+  }
+
+  // Get the last index block
+  let lastIndexBlock: number = await configOp.readInt(KeySmanagerLastIndexBlock);
+  if (_.isNil(lastIndexBlock) || lastIndexBlock === 0) {
+    logger.info(`No '${KeySmanagerLastIndexBlock}' config found in DB, this is the first run, set to 1 by default`);
+    lastIndexBlock = 1;
+    // Save the retrieved value to DB
+    configOp.saveInt(KeySmanagerLastIndexBlock, lastIndexBlock);
+  }
+  logger.info(`Smanager last index block: ${lastIndexBlock}`);
+
+  let lastBlockTime = Dayjs();
+
+  // Run the loop to simulate smanager to pull orders from chain and add to the queue in db
+  while(true) {
+    try {
+      // Sleep a while
+      await Bluebird.delay(6 * 1000);
+
+      await api.ensureConnection();
+      const curBlock: number = api.latestFinalizedBlock();
+      if (lastIndexBlock >= curBlock) {
+        const now = Dayjs();
+        const diff = Dayjs.duration(now.diff(lastBlockTime));
+        if (diff.asSeconds() > MaxNoNewBlockDuration.asSeconds()) {
+          logger.error('no new block for %d seconds, please check RPC node!', diff.asSeconds());
+          /// TODO: Trigger an alert to monitoring system
+          throw new Error('block not updating');
+        }
+        await Bluebird.delay(3 * 1000);
+        continue;
+      }
+      lastBlockTime = Dayjs();
+
+      // Iterate every block to get files to process
+      for (let block = lastIndexBlock + 1; block <= curBlock; block++) {
+
+        const [newFiles, closedFiles] = await api.parseNewFilesAndClosedFilesByBlock(block);
+        logger.debug(`Block '${block}': handling ${newFiles.length} new files, ${closedFiles.length} closed files`);
+
+        if (!_.isEmpty(newFiles)) {
+            // create file record for every groupAddress
+            // Get file_size from DB
+            const fileSizeRecords = await FilesRecord.findAll({
+                attributes: ['cid', 'file_size'],
+                where: { cid: newFiles }
+            });
+
+            const cidToSizeMap = new Map<string, bigint>();
+            for (const record of fileSizeRecords) {
+                cidToSizeMap.set(record.cid, record.file_size);
+            }
+
+            const fileRecords = [];
+            for (const cid of newFiles) {
+                for (const [groupAddress, _members] of groupMembersMap) {
+                    fileRecords.push({
+                        cid,
+                        file_size: cidToSizeMap.get(cid),
+                        group_address: groupAddress
+                    });
+                }
+            }
+            
+            await database.transaction(async (transaction) => {
+                await FilesRecord.bulkCreate(fileRecords, {
+                    ignoreDuplicates: true, // Ignore on duplicate cid + group_address
+                    transaction
+                });
+            });            
+        }
+        if (!_.isEmpty(closedFiles)) {
+            // Mark the is_to_cleanup flag for closed files
+            await database.transaction(async (transaction) => {
+                for (const cid of closedFiles) {
+                    await FilesRecord.update({
+                        is_to_cleanup: true
+                    }, {
+                        where: { cid: cid },
+                        transaction
+                    });
+                }
+            });
+        }
+        
+        // Update the last processed block
+        lastIndexBlock = block;
+        configOp.saveInt(KeySmanagerLastIndexBlock, lastIndexBlock);
+      }
+    } catch(err) {
+      logger.error(`💥 Error to simulate smanager: ${err}`);
+    }
+  } 
+}
+
+async function runSworkerSimulator(
+    context: AppContext,
+    sworkerAccount: KeyringPair,
+    sworkerKey: string,
+    groupAddress: string
+) {
+    const { api, database } = context;
+    const sworkerAddress = sworkerAccount.address;
+
+    // Re-create the logger object for this simulator with sworkerAddress as prefix
+    const logger = createChildLogger({ moduleId: `${sworkerAddress}` });
+    logger.info(`Run Sworker Simulator `);
+
+    do {
+        try {
+            // Sleep a while
+            await Bluebird.delay(1000);
+
+            // Ensure connection and get the lastest finalized block
+            await api.ensureConnection();
+            let curBlock: number = api.latestFinalizedBlock();
+            let reportSlot = Math.floor(curBlock/REPORT_SLOT) * REPORT_SLOT;
+            
+            // Only report works between 10th and 400th block in current slot, simulate the current sworker behavior
+            let blockInSlot = curBlock % REPORT_SLOT;
+            if ( blockInSlot < WORKREPORT_PROCESSOR_OFFSET || blockInSlot > (SPOWER_UPDATE_START_OFFSET-WORKREPORT_PROCESSOR_OFFSET) )  {
+                let waitTime = 6000;
+                if (blockInSlot < WORKREPORT_PROCESSOR_OFFSET) {
+                waitTime = (WORKREPORT_PROCESSOR_OFFSET - blockInSlot) * 6 * 1000;
+                } else {
+                waitTime = (REPORT_SLOT - blockInSlot + WORKREPORT_PROCESSOR_OFFSET) * 6 * 1000;
+                }
+
+                logger.info(`Not in the work reports process block range, blockInSlot: ${blockInSlot}, wait for ${waitTime/1000} s`);
+                await Bluebird.delay(waitTime);
+                continue;
+            }            
+
+            // Get the last work report from DB
+            const lastWorkReportDB = await WorkReportsRecord.findOne({
+                where: {
+                    sworker_address: sworkerAddress
+                },
+                order: [['slot','DESC']]
+            });
+
+            // If already reported, continue to next slot
+            if (!_.isNil(lastWorkReportDB) && lastWorkReportDB.slot == reportSlot && lastWorkReportDB.report_done) {
+                logger.warn(`Already reported on slot '${reportSlot}', skip and wait for next slot`);
+                const waitTime = (REPORT_SLOT - blockInSlot) * 6000;
+                await Bluebird.delay(waitTime);
+                continue;
+            }
+
+            // Calculate random wait time to simulate sworker report works in random time
+            const min = blockInSlot;
+            const max = SPOWER_UPDATE_START_OFFSET - WORKREPORT_PROCESSOR_OFFSET;
+            const randomWaitBlocks = Math.floor(Math.random() * (max - min));
+            const waitTime = randomWaitBlocks * 6000;
+            logger.info(`Wait for '${randomWaitBlocks}' blocks to report works`);
+            await Bluebird.delay(waitTime);
+            
+            // Get the lock before we proceed
+            logger.info(`Acquiring lock to proceed...`);
+            const release = await files_record_lock.acquire();
+            logger.info(`Acquired lock success!!`);
+            try {
+                // Get the latest finalized block again
+                curBlock = api.latestFinalizedBlock(); 
+                blockInSlot = curBlock % REPORT_SLOT;
+                reportSlot = Math.floor(curBlock/REPORT_SLOT) * REPORT_SLOT;
+                const reportSlotHash = await api.getBlockHash(curBlock);
+                
+                // Get the latest work report from chain
+                const workReportOnChain: WorkReportOnChain = await api.getWorkReport(sworkerKey);
+                // Check the consistency between local and chain
+                if (!_.isNil(lastWorkReportDB) && !_.isNil(workReportOnChain)) {
+                    if (lastWorkReportDB.slot < workReportOnChain.report_slot) {
+                        logger.warn(`Local report slot '${lastWorkReportDB.slot}' is less than on-chain report slot '${workReportOnChain.report_slot}', this should not happen!`);
+                        const workReportOnChainSlotHash = await api.getBlockHash(workReportOnChain.report_slot);
+                        // Insert the workReportOnChain to DB
+                        await WorkReportsRecord.create({
+                            sworker_address: sworkerAddress,
+                            slot: workReportOnChain.report_slot,
+                            slot_hash: workReportOnChainSlotHash.toString(),
+                            report_block: workReportOnChain.report_slot, // Just use the report_slot as report_block
+                            report_done: true,
+                            curr_pk: sworkerKey,
+                            ab_upgrade_pk: '0x',
+                            reported_srd_size: BigInt(1_000_000_000_000),
+                            reported_files_size: workReportOnChain.reported_files_size,
+                            added_files: JSON.stringify([]),
+                            deleted_files: JSON.stringify([]),
+                            reported_srd_root: '0x',
+                            reported_files_root: '0x',
+                            sig: '0x'
+                        });
+                    } else if (lastWorkReportDB.slot > workReportOnChain.report_slot) {
+                        logger.warn(`Local report slot '${lastWorkReportDB.slot}' is larger than on-chain report slot '${workReportOnChain.report_slot}', restore the data`);
+                        restoreData(sworkerAddress, groupAddress, lastWorkReportDB.slot, database);
+                    } else {
+                        // Slot are equal, mark the local record as done if not yet
+                        if (!lastWorkReportDB.report_done) {
+                            logger.warn(`Slot are equal, mark the local record as done if not yet`);
+                            markAsDone(sworkerAddress, groupAddress, lastWorkReportDB.slot, database);
+                        }
+                    }
+                }
+
+                ///-------------------------------------------------------------------------------
+                // Get non-occupied files from file_records table
+                logger.info(`Retrieve to-add files and to-delete files to construct work reports`);
+                const toAddFiles = await FilesRecord.findAll({
+                    where: { 
+                        group_address: groupAddress,
+                        reported_sworker_address: null,
+                        is_to_cleanup: false,
+                        cleanup_done: false
+                    },
+                    order: [['create_at', 'ASC']],
+                    limit: 300 // One work report has 300 files limit for added_files
+                });
+
+                // Get to-delete files 
+                const toDeleteFiles = await FilesRecord.findAll({
+                    where: {
+                        group_address: groupAddress,
+                        reported_sworker_address: sworkerAddress,
+                        is_to_cleanup: true,
+                        cleanup_done: false
+                    },
+                    order: [['create_at', 'ASC']],
+                    limit: 295 // One work report has 300 files limit for deleted_files, leave 5 for random delete files
+                });
+
+                // Random delete files
+                if (Math.random() < 0.3) {
+                    const randomDeleteFiles = await FilesRecord.findAll({
+                        where: {
+                            group_address: groupAddress,
+                            reported_sworker_address: sworkerAddress,
+                            is_to_cleanup: false,
+                            cleanup_done: false
+                        },
+                        order: [['create_at', 'ASC']],
+                        limit: 5
+                    });
+
+                    toDeleteFiles.push(...randomDeleteFiles);
+                }
+
+                // Calculate the total added_files_size and total deleted_files_size
+                let total_added_files_size = BigInt(0);
+                let total_deleted_files_size = BigInt(0);
+                for (const file of toAddFiles) {
+                    total_added_files_size += file.file_size;
+                }
+                for (const file of toDeleteFiles) {
+                    total_deleted_files_size += file.file_size;
+                }
+
+                // Construct work report request 
+                const fileParser = (file: FilesRecord) => {
+                    const rst: [string, bigint, number] = [stringToHex(file.cid), file.file_size, curBlock];
+                    return rst;
+                };
+                
+                const last_reported_files_size = _.isNil(lastWorkReportDB) ? BigInt(0) : lastWorkReportDB.reported_files_size;
+                const new_reported_files_size = last_reported_files_size + total_added_files_size - total_deleted_files_size
+                const workReport = {
+                    curr_pk: sworkerKey,
+                    ab_upgrade_pk: '0x',
+                    slot: reportSlot,
+                    slot_hash: reportSlotHash.toString(),
+                    reported_srd_size: BigInt(1_000_000_000_000),
+                    reported_files_size: new_reported_files_size,
+                    added_files: toAddFiles.map(fileParser),
+                    deleted_files: toDeleteFiles.map(fileParser),
+                    reported_srd_root: '0x',
+                    reported_files_root: '0x',
+                    sig: '0x',
+                }
+
+                // Update DB data before sending to chain
+                await database.transaction(async (transaction) => {
+                    // Save work report to DB and mark report_done as false
+                    await WorkReportsRecord.create({
+                        sworker_address: sworkerAddress,
+                        report_block: curBlock,
+                        report_done: false, // Update to true after sending to chain successfully
+                        ...workReport,
+                        added_files: JSON.stringify(workReport.added_files),
+                        deleted_files: JSON.stringify(workReport.deleted_files),
+                    }, {
+                        transaction
+                    });
+
+                    // Save file records to DB and mark report_done as false
+                    const toUpdateRecordsOfAddedFiles = [];
+                    for (const file of toAddFiles) {
+                        toUpdateRecordsOfAddedFiles.push({
+                            cid: file.cid,
+                            group_address: groupAddress,
+                            reported_sworker_address: sworkerAddress,
+                            reported_block: curBlock,
+                            reported_slot: reportSlot,
+                            report_done: false
+                        });
+                    }
+                    await FilesRecord.bulkCreate(toUpdateRecordsOfAddedFiles,{
+                        updateOnDuplicate: ['reported_sworker_address', 'reported_block', 'reported_slot', 'report_done'],
+                        transaction
+                    });
+
+                    const toUpdateRecordsOfDeletedFiles = [];
+                    for (const file of toDeleteFiles) {
+                        toUpdateRecordsOfDeletedFiles.push({
+                            cid: file.cid,
+                            group_address: groupAddress,
+                            cleanup_done: true,
+                            report_done: false
+                        });
+                    }
+                    await FilesRecord.bulkCreate(toUpdateRecordsOfDeletedFiles,{
+                        updateOnDuplicate: ['cleanup_done', 'report_done'],
+                        transaction
+                    });
+                });
+
+                // Send work report
+                logger.info(`reporting works at slot '${reportSlot}' (block '${curBlock}') with ${toAddFiles.length} added_files and ${toDeleteFiles.length} deleted_files ...`);
+                const result = await api.sworkerReportWorks(sworkerAccount, workReport);
+
+                if (result) {
+                    logger.info(`report works success, mark db data as done`);
+                    markAsDone(sworkerAddress, groupAddress, reportSlot, database);                                       
+                } else {
+                    // Report works failed, reset the record
+                    logger.info(`Report works failed, reset the record`);
+                    restoreData(sworkerAddress, groupAddress, reportSlot, database);
+                }
+            } catch(err) {
+                throw err;
+            } finally {
+                release();
+            }
+        } catch(err) {
+            logger.error(`💥 Error for Sworker Simulator: ${err}`);
+        }
+    } while(true);
+}
+
+async function markAsDone(sworkerAddress: string, groupAddress: string, reportSlot: number, database: Sequelize) {
+    await database.transaction(async (transaction) => {
+        // Update work_reports DB status
+        await WorkReportsRecord.update({
+            report_done: true
+        }, {
+            where: {
+                sworker_address: sworkerAddress,
+                slot: reportSlot
+            },
+            transaction
+        });
+        
+        // Update file_records DB, just mark all the report_done as true
+        await FilesRecord.update({
+            report_done: true
+        }, {
+            where: {
+                group_address: groupAddress,
+                reported_sworker_address: sworkerAddress,
+                report_done: false
+            },
+            transaction
+        });         
+    }); 
+    
+}
+
+async function restoreData(sworkerAddress: string, groupAddress: string, reportSlot: number, database: Sequelize) {
+    await database.transaction(async (transaction) => {
+        await WorkReportsRecord.destroy({
+            where: {
+                sworker_address: sworkerAddress,
+                slot: reportSlot
+            }
+        });
+
+        // For added_files
+        await FilesRecord.update({
+            reported_sworker_address: null,
+            reported_block: null,
+            reported_slot: null,
+        }, {
+            where: {
+                group_address: groupAddress,
+                reported_sworker_address: sworkerAddress,
+                report_done: false,
+                cleanup_done: false
+            },
+            transaction
+        });
+
+        // For deleted_files
+        await FilesRecord.update({
+            cleanup_done: false
+        }, {
+            where: {
+                group_address: groupAddress,
+                reported_sworker_address: sworkerAddress,
+                report_done: false,
+                cleanup_done: true
+            },
+            transaction
+        });
+    });
+}

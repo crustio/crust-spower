@@ -77,8 +77,8 @@ async function generateOrders(context: AppContext, accountKrps: KeyringPair[]) {
 
   while(true) {
     try {
-      // Sleep a while
-      await Bluebird.delay(1 * 1000);
+      // Wait for the order place interval
+      await Bluebird.delay(placeOrderFrequency * 1000);
 
       // 1. Select random account
       const randomIndex = Math.floor(Math.random() * accountKrps.length);
@@ -97,23 +97,23 @@ async function generateOrders(context: AppContext, accountKrps: KeyringPair[]) {
 
       // 4. Place storage order to crust
       // Set the size to a smaller value to mock the illegalFileClosed event, in 1/10 probability
+      let reportSize = size;
       if (Math.random() < 0.1) {
-        size = size - 1;
+        reportSize = size - 1;
         logger.info('💥 💥 Set the size to a smaller value to mock the illegalFileClosed event');
       }
       logger.info(`Placing storage order to crust...`);
-      await api.placeStorageOrder(krp, cid, size);
+      await api.placeStorageOrder(krp, cid, reportSize);
       logger.info(`Place storage order to crust successfully`);
       
       // 5. Save order to DB
       await OrdersRecord.create({
         cid,
         file_size: BigInt(size),
+        reported_file_size: BigInt(reportSize),
+        reported_as_illegal_file: size != reportSize,
         sender: krp.address
       });
-
-      // Wait for the interval
-      await Bluebird.delay(placeOrderFrequency * 1000);
     } catch(err) {
       logger.error(`💥 Error to generate orders: ${err}`);
     }

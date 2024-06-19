@@ -1,7 +1,7 @@
 import { ApiPromise, Keyring, WsProvider } from '@polkadot/api';
-import { BlockHash, Header, SignedBlock, DispatchError, } from '@polkadot/types/interfaces';
+import { BlockHash, Header, SignedBlock, DispatchError, EventRecord, } from '@polkadot/types/interfaces';
 import { KeyringPair } from '@polkadot/keyring/types';
-import { formatError, parseObj, queryToObj, sleep } from '../utils';
+import { formatError, hexToString, parseObj, queryToObj, sleep } from '../utils';
 import { typesBundleForPolkadot, crustTypes } from '@crustio/type-definitions';
 import _ from 'lodash';
 import { logger } from '../utils/logger';
@@ -11,12 +11,11 @@ import Bluebird from 'bluebird';
 import { timeout } from '../utils/promise-utils';
 import {ITuple} from '@polkadot/types/types';
 import { SPowerConfig } from '../types/spower-config';
-import { TxRes } from '../types/chain';
+import { Group, TxRes, WorkReport, WorkReportOnChain } from '../types/chain';
 import { AppContext } from '../types/context';
 import { createConfigOps } from '../db/configs';
 
 export type Identity = typeof crustTypes.swork.types.Identity;
-export type Group = typeof crustTypes.swork.types.Group;
 
 const KeyMetadataInitialized = 'chain:metadata-initialized';
 
@@ -43,7 +42,7 @@ export default class CrustApi {
   private api!: ApiPromise;
   private latestBlock = 0;
   private subLatestHead: VoidFn = null;
-  private txLocker = {market: false, swork: false, staking: false};
+  private txLocker = {market: false, swork: false, balances:false, staking: false};
 
   constructor(config: SPowerConfig) {
     this.addr = config.chain.endPoint;
@@ -241,7 +240,7 @@ export default class CrustApi {
     await this.withApiReady();
 
     const tx = this.api.tx.balances.transfer(recipient, amount);
-    await this.sendTransaction('market', 'balances.transfer', tx, sender);
+    await this.sendTransaction('balances', 'balances.transfer', tx, sender);
   }
 
   async placeStorageOrder(sender: KeyringPair, cid: string, fileSize: number) {
@@ -257,11 +256,19 @@ export default class CrustApi {
   async getGroup(groupAddress: string): Promise<Group> {
     await this.withApiReady();
 
-    const value = await this.api.query.swork.groups(groupAddress);
+    // The value of swork.groups on chain is not Option<> type, so non-exists group will 
+    // return a default Group object which is not what we want
+    const allGroupEntries = await this.api.query.swork.groups.entries();
 
-    if (!value.isEmpty) {
-      return parseObj(value);
+    for (const [key, value] of allGroupEntries ) {
+      const address = key.toHuman();
+      const group = value.toHuman() as any as Group;
+
+      if (address == groupAddress) {
+        return group;
+      }
     }
+
     return null;
   }
 
@@ -274,10 +281,10 @@ export default class CrustApi {
     await this.sendTransaction('swork', 'swork.createGroup', tx, group);
   }
 
-  async addMemberToAllowList(memberAddress: string, groupAccount: KeyringPair) {
+  async addMemberToAllowlist(memberAddress: string, groupAccount: KeyringPair) {
     await this.withApiReady();
 
-    const tx = this.api.tx.swork.addMemberIntoAllowList(memberAddress);
+    const tx = this.api.tx.swork.addMemberIntoAllowlist(memberAddress);
 
     await this.sendTransaction('swork', 'swork.addMemberIntoAllowList', tx, groupAccount);
   }
@@ -298,6 +305,77 @@ export default class CrustApi {
     await this.sendTransaction('swork', 'swork.registerWithDeauthChain', tx, sworkerAccount);
   }
 
+  async sworkerReportWorks(sworkerAccount: KeyringPair, workReport: WorkReport): Promise<boolean> {
+    await this.withApiReady();
+
+    const tx = this.api.tx.swork.reportWorks(
+      workReport.curr_pk, workReport.ab_upgrade_pk, workReport.slot, workReport.slot_hash,
+      workReport.reported_srd_size, workReport.reported_files_size, workReport.added_files, workReport.deleted_files,
+      workReport.reported_srd_root, workReport.reported_files_root, workReport.sig);
+
+    try {
+      await this.sendTransaction('swork', 'swork.reportWorks', tx, sworkerAccount);
+      return true;
+    } catch(err) {
+      logger.error(`💥 Error to report works to chain: ${err}`);
+    }
+
+    return false;
+  }
+
+  async parseNewFilesAndClosedFilesByBlock(
+    atBlock: number
+  ): Promise<[string[], string[]]> {
+    await this.withApiReady();
+    try {
+      const bh = await this.getBlockHash(atBlock);
+      const ers: EventRecord[] = await this.api.query.system.events.at(bh);
+      const newFiles: string[] = [];
+      const closedFiles: string[] = [];
+
+      for (const {event: { data, method }} of ers) {
+        if (method === 'FileSuccess') {
+          if (data.length < 2) continue; // data should be like [AccountId, MerkleRoot]
+          // Find new successful file order from extrinsincs
+          const cid = hexToString(data[0].toString());
+          newFiles.push(cid);
+        } 
+        // else if (method === 'CalculateSuccess') {
+        //   if (data.length !== 1) continue; // data should be like [MerkleRoot]
+
+        //   const cid = hexToString(data[0].toString());
+        //   const isClosed = (await this.maybeGetFileUsedInfo(cid)) === null;
+        //   if (isClosed) {
+        //     closedFiles.push(cid);
+        //   }
+        //} 
+        else if (method === 'IllegalFileClosed' || method === 'FileClosed') {
+          if (data.length !== 1) continue; // data should be like [MerkleRoot]
+          // Add into closed files
+          const cid = hexToString(data[0].toString());
+          closedFiles.push(cid);
+        }
+      }
+
+      return [newFiles, closedFiles];
+    } catch (err) {
+      logger.error(`💥 Parse files error at block(${atBlock}): ${err}`);
+      return [[], []];
+    }
+  }
+  
+  async getWorkReport(sworkerKey: string): Promise<WorkReportOnChain> {
+    await this.withApiReady();
+
+    const value = await this.api.query.swork.workReports(sworkerKey);
+    
+    if (!value.isEmpty) {
+      return parseObj(value);
+    }
+    
+    return null;
+  }
+
   private async sendTransaction(lockName: string, method: string, tx: SubmittableExtrinsic, krp: KeyringPair) {
     let txRes = queryToObj(await this.handleTxWithLock(lockName, async () => this.sendTx(tx, krp)));
     txRes = txRes ? txRes : {status:'failed', message: 'Null txRes'};
@@ -309,12 +387,14 @@ export default class CrustApi {
   };
 
   private async handleTxWithLock(lockName: string, handler: Function) {
-    if (this.txLocker[lockName]) {
-      return {
-        status: 'failed',
-        message: 'Tx Locked',
-      };
-    }
+    do {
+      if (this.txLocker[lockName]) {
+        logger.debug(`Lock '${lockName}' is locked, wait a while and check later`);
+        await sleep(1000);
+      } else {
+        break;
+      }
+    } while(true);
 
     try {
       this.txLocker[lockName] = true;

@@ -10,6 +10,7 @@ import { logger } from './utils/logger';
 import { timeout, timeoutOrError } from './utils/promise-utils';
 import { sleep } from './utils';
 import { runPlaceOrderTask } from './tasks/place-order-task';
+import { runSworkerSimulatorTask } from './tasks/sworker-simulator-task';
 
 const ConfigFile = process.env['SPOWER_CONFIG'] || 'spower-config.json';
 export const MaxNoNewBlockDuration = Dayjs.duration({
@@ -50,7 +51,7 @@ async function main() {
     runPlaceOrderTask(context);
 
     // run the sworker simulator task
-    //runSworkerSimulatorTask(context);
+    runSworkerSimulatorTask(context);
 
     // keep alive
     do {

@@ -96,6 +96,8 @@ export class OrdersRecord extends Model<InferAttributes<OrdersRecord>, InferCrea
   declare id: CreationOptional<number>;
   declare cid: string
   declare file_size: bigint;
+  declare reported_file_size: bigint;
+  declare reported_as_illegal_file: boolean;
   declare sender: string;
   declare last_updated: CreationOptional<Date>;
   declare create_at: CreationOptional<Date>;
@@ -115,6 +117,15 @@ export class OrdersRecord extends Model<InferAttributes<OrdersRecord>, InferCrea
     file_size: {
       type: DataTypes.BIGINT,
       allowNull: false
+    },
+    reported_file_size: {
+      type: DataTypes.BIGINT,
+      allowNull: false
+    },
+    reported_as_illegal_file: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: 0
     },
     sender: {
       type: DataTypes.STRING,
@@ -210,6 +221,183 @@ export class SworkerKeysRecord extends Model<InferAttributes<SworkerKeysRecord>,
   }, {
     sequelize,
     tableName: 'sworker_keys'
+  });
+  }
+};
+
+/// ------------------------------------------------
+/// file_records table
+export class FilesRecord extends Model<InferAttributes<FilesRecord>, InferCreationAttributes<FilesRecord>> {
+  declare id: CreationOptional<number>;
+  declare cid: string;
+  declare file_size: bigint;
+  declare group_address: string;
+  declare reported_sworker_address: CreationOptional<string>;
+  declare reported_slot: CreationOptional<number>;
+  declare reported_block: CreationOptional<number>;
+  declare report_done: CreationOptional<boolean>;
+  declare is_to_cleanup: CreationOptional<boolean>;
+  declare cleanup_done: CreationOptional<boolean>;
+  declare last_updated: CreationOptional<Date>;
+  declare create_at: CreationOptional<Date>;
+  static initModel(sequelize: Sequelize) {
+    FilesRecord.init({
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      allowNull: false,
+      primaryKey: true,
+    },
+    cid: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    file_size: {
+      type: DataTypes.BIGINT,
+      allowNull: false,
+    },
+    group_address: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    reported_sworker_address: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    reported_slot: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    reported_block: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    report_done: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    is_to_cleanup: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    cleanup_done: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    last_updated: {
+      type: DataTypes.DATE(3),
+      allowNull: false,
+    },
+    create_at: {
+      type: DataTypes.DATE(3),
+      allowNull: false,
+    },
+  }, {
+    sequelize,
+    tableName: 'file_records'
+  });
+  }
+};
+
+/// ------------------------------------------------
+/// work_reports table
+export class WorkReportsRecord extends Model<InferAttributes<WorkReportsRecord>, InferCreationAttributes<WorkReportsRecord>> {
+  declare id: CreationOptional<number>;
+  declare sworker_address: string;
+  declare slot: number;
+  declare slot_hash: string;
+  declare report_block: number;
+  declare report_done: boolean;
+  declare curr_pk: string;
+  declare ab_upgrade_pk: string;
+  declare reported_srd_size: bigint;
+  declare reported_files_size: bigint;
+  declare added_files: string;
+  declare deleted_files: string;
+  declare reported_srd_root: string;
+  declare reported_files_root: string;
+  declare sig: string;
+  declare last_updated: CreationOptional<Date>;
+  declare create_at: CreationOptional<Date>;
+  static initModel(sequelize: Sequelize) {
+    WorkReportsRecord.init({
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      allowNull: false,
+      primaryKey: true,
+    },
+    sworker_address: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    slot: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    slot_hash: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    report_block: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    report_done: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    curr_pk: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    ab_upgrade_pk: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    reported_srd_size: {
+      type: DataTypes.BIGINT,
+      allowNull: true,
+    },
+    reported_files_size: {
+      type: DataTypes.BIGINT,
+      allowNull: true,
+    },
+    added_files: {
+      type: DataTypes.TEXT('medium'),
+      allowNull: true,
+    },
+    deleted_files: {
+      type: DataTypes.TEXT('medium'),
+      allowNull: true,
+    },
+    reported_srd_root: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    reported_files_root: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    sig: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    last_updated: {
+      type: DataTypes.DATE(3),
+      allowNull: false,
+    },
+    create_at: {
+      type: DataTypes.DATE(3),
+      allowNull: false,
+    },
+  }, {
+    sequelize,
+    tableName: 'work_reports'
   });
   }
 };

@@ -2,7 +2,7 @@ import { SPowerConfig } from '../types/spower-config';
 import { Sequelize, Transaction } from 'sequelize';
 import { createChildLogger } from '../utils/logger';
 import { applyMigration } from './migration';
-import { AccountsRecord, ConfigRecord, OrdersRecord, } from '../types/database';
+import { AccountsRecord, ConfigRecord, FilesRecord, GroupMembersRecord, OrdersRecord, SworkerKeysRecord, WorkReportsRecord, } from '../types/database';
 
 export async function loadDb(config: SPowerConfig): Promise<Sequelize> {
   const logger = createChildLogger({
@@ -59,6 +59,10 @@ export async function loadDb(config: SPowerConfig): Promise<Sequelize> {
   ConfigRecord.initModel(sequelize);
   AccountsRecord.initModel(sequelize);
   OrdersRecord.initModel(sequelize);
+  SworkerKeysRecord.initModel(sequelize);
+  GroupMembersRecord.initModel(sequelize);
+  FilesRecord.initModel(sequelize);
+  WorkReportsRecord.initModel(sequelize);
 
   return sequelize;
 }

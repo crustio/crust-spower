@@ -124,6 +124,15 @@ async function createOrdersTables(sequelize: QueryInterface) {
           type: DataTypes.BIGINT,
           allowNull: false
         },
+        reported_file_size: {
+          type: DataTypes.BIGINT,
+          allowNull: false
+        },
+        reported_as_illegal_file: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false
+        },
         sender: {
           type: DataTypes.STRING,
           allowNull: false

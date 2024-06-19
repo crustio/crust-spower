@@ -13,6 +13,7 @@ export const down: MigrationFn<QueryInterface> = async ({
   context: sequelize,
 }) => {
   await sequelize.dropTable('group_members')
+  await sequelize.dropTable('sworker_keys')
 };
 
 async function createGroupMembersTable(sequelize: QueryInterface) {
