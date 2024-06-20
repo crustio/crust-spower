@@ -142,6 +142,7 @@ async function indexAll(
         await syncFilesV2Data(cids, indexAtBlock, curBlock, context, logger);
 
         // Save the last indexed key
+        lastIndexedKey = newLastIndexedKey;
         await config.saveString(KeyIndexAllLastIndexKey, newLastIndexedKey);
 
     } catch (err) {
