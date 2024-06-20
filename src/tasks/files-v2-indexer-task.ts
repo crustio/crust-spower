@@ -13,7 +13,7 @@ import { MaxNoNewBlockDuration } from '../main';
 import Bluebird from 'bluebird';
 import { createFilesV2Operator } from '../db/files-v2';
 import { MarketFilesV2StorageKey } from '../utils/consts';
-import { cidFromStorageKey } from '../utils';
+import { cidFromStorageKey, stringifyEx } from '../utils';
 
 enum IndexMode {
   IndexAll = 'index-all',
@@ -287,7 +287,7 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
 
           toUpsertRecords.push({
             cid,
-            file_info: JSON.stringify(fileInfo),
+            file_info: stringifyEx(fileInfo),
             last_sync_block: atBlock,
             last_sync_time: new Date(),
             need_sync: false,
