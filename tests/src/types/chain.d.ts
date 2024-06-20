@@ -32,3 +32,23 @@ export interface WorkReportOnChain {
   reported_srd_root: string;
   reported_files_root: string;
 }
+
+export interface FileInfoV2 {
+  file_size: bigint;
+  spower: bigint;
+  expired_at: number;
+  calculated_at: number;
+  amount: bigint;
+  prepaid: bigint;
+  reported_replica_count: number;
+  remaining_paid_count: number;
+  replicas: Map<string, Replica>;
+};
+
+export interface Replica {
+  who: string;
+  valid_at: number;
+  anchor: string;
+  is_reported: boolean;
+  created_at: number;
+};

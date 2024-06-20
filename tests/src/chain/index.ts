@@ -1,7 +1,7 @@
 import { ApiPromise, Keyring, WsProvider } from '@polkadot/api';
 import { BlockHash, Header, SignedBlock, DispatchError, EventRecord, } from '@polkadot/types/interfaces';
 import { KeyringPair } from '@polkadot/keyring/types';
-import { formatError, hexToString, parseObj, queryToObj, sleep } from '../utils';
+import { cidFromStorageKey, formatError, hexToString, queryToObj, sleep } from '../utils';
 import { typesBundleForPolkadot, crustTypes } from '@crustio/type-definitions';
 import _ from 'lodash';
 import { logger } from '../utils/logger';
@@ -11,9 +11,11 @@ import Bluebird from 'bluebird';
 import { timeout } from '../utils/promise-utils';
 import {ITuple} from '@polkadot/types/types';
 import { SPowerConfig } from '../types/spower-config';
-import { Group, TxRes, WorkReport, WorkReportOnChain } from '../types/chain';
+import { FileInfoV2, Group, TxRes, WorkReport, WorkReportOnChain } from '../types/chain';
 import { AppContext } from '../types/context';
 import { createConfigOps } from '../db/configs';
+import { u8aToU8a } from '@polkadot/util';
+import { createTypeUnsafe } from '@polkadot/types/create';
 
 export type Identity = typeof crustTypes.swork.types.Identity;
 
@@ -337,7 +339,7 @@ export default class CrustApi {
         if (method === 'FileSuccess') {
           if (data.length < 2) continue; // data should be like [AccountId, MerkleRoot]
           // Find new successful file order from extrinsincs
-          const cid = hexToString(data[0].toString());
+          const cid = hexToString(data[1].toString());
           newFiles.push(cid);
         } 
         // else if (method === 'CalculateSuccess') {
@@ -370,12 +372,103 @@ export default class CrustApi {
     const value = await this.api.query.swork.workReports(sworkerKey);
     
     if (!value.isEmpty) {
-      return parseObj(value);
+      const workReport = JSON.parse(value.toString()) as WorkReportOnChain;
+      return workReport;
     }
     
     return null;
   }
 
+  async getLastSpowerUpdateBlock(): Promise<number> {
+    await this.withApiReady();
+    
+    const block = await this.api.query.swork.lastSpowerUpdateBlock();
+    if (block.isEmpty) {
+      return 0;
+    }
+    return parseInt(block as any);   
+  }
+
+  async getLastProcessedBlockWorkReports(): Promise<number> {
+    await this.withApiReady();
+    
+    const block = await this.api.query.swork.lastProcessedBlockWorkReports();
+    if (_.isNil(block) || block.isEmpty) {
+      return 0;
+    }
+    return parseInt(block as any);   
+  }
+
+  async getAllWorkReports(atBlock: number): Promise<Map<string, WorkReportOnChain>> {
+    await this.withApiReady();
+
+    const blockHash = await this.getBlockHash(atBlock);
+    const allWorkReportsData = await this.api.query.swork.workReports.entriesAt(blockHash);
+
+    const workReportsMap = new Map<string, WorkReportOnChain>();
+    for (const entry of allWorkReportsData) {
+      const anchor = entry[0].toHuman().toString();
+      const workReport = JSON.parse(entry[1].toString())  as WorkReportOnChain;
+
+      workReportsMap.set(anchor, workReport);
+    }
+    return workReportsMap;
+  }
+
+  async getFilesInfoV2(cids: string[], atBlock: number): Promise<Map<string, FileInfoV2>> {
+
+    let startTime = performance.now();
+    await this.withApiReady();
+    let fileInfoV2Map = new Map<string, FileInfoV2>();
+    try {
+      const blockHash = await this.getBlockHash(atBlock);
+
+      // Generate the related storage keys
+      let storageKeys = [];
+      for (const cid of cids) {
+        storageKeys.push(this.api.query.market.filesV2.key(cid));
+      }
+
+      // Retrieve the FilesInfoV2 data from chain in batch
+      const batchSize = 300;
+      logger.debug(`Total files count need to query: ${storageKeys.length}, query in batch size: ${batchSize}`);
+      for (let i = 0; i < storageKeys.length; i += batchSize) {
+        const storageKeysInBatch = storageKeys.slice(i, i + batchSize);
+        logger.debug(`Batch ${i+1}: ${storageKeysInBatch.length} files`);
+
+        const fileInfoV2MapFromChain = await this.api.rpc.state.queryStorageAt(storageKeysInBatch, blockHash) as any;
+
+        for (let index = 0; index < fileInfoV2MapFromChain.length; index++) {
+          const cid = cidFromStorageKey(storageKeysInBatch[index]);
+          const filesInfoV2Codec = fileInfoV2MapFromChain[index];
+          if (!_.isNil(filesInfoV2Codec) && !filesInfoV2Codec.isEmpty) {
+            // Decode the Codec to FileInfoV2 object 
+            const input = u8aToU8a(filesInfoV2Codec.value);
+            const registry = filesInfoV2Codec.registry;
+            const fileInfoV2Decoded = createTypeUnsafe(registry, 'FileInfoV2', [input], {blockHash, isPedantic: true});
+
+            const fileInfoV2: FileInfoV2 = JSON.parse(fileInfoV2Decoded.toString(), (key, value) => {
+              if (key === 'replicas') {
+                return new Map(Object.entries(value));
+              }
+              return value;
+            });
+
+            fileInfoV2Map.set(cid, fileInfoV2);
+          }
+        }
+      }
+    } catch (err) {
+      logger.error(`💥 Error to get files info v2 from chain: ${err}`);
+        throw err;
+    } finally {
+      let endTime = performance.now();
+      logger.debug(`End to get ${fileInfoV2Map.size} files info v2 from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+    }
+
+    return fileInfoV2Map;
+  }
+  
   private async sendTransaction(lockName: string, method: string, tx: SubmittableExtrinsic, krp: KeyringPair) {
     let txRes = queryToObj(await this.handleTxWithLock(lockName, async () => this.sendTx(tx, krp)));
     txRes = txRes ? txRes : {status:'failed', message: 'Null txRes'};
