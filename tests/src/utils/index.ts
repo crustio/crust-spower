@@ -135,7 +135,7 @@ export function cidFromStorageKey(key: string): string | null {
   return cid;
 }
 
-export function stringifyEx(toStringifyObj: any): string {
+export function stringifyEx(toStringifyObj: any, space?: string | number): string {
   const replacer = (_key, value) => {
     if (typeof value === 'bigint') {
       return parseInt(value.toString());
@@ -151,5 +151,5 @@ export function stringifyEx(toStringifyObj: any): string {
     return value;
   };
   
-  return JSON.stringify(toStringifyObj, replacer, 2);
+  return JSON.stringify(toStringifyObj, replacer, space);
 }
