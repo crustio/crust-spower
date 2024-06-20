@@ -9,6 +9,7 @@ const chainConfigSchema = Joi.object().keys({
   password: Joi.string().required(),
   workReportsProcessorInterval: Joi.number().required(),
   workReportsProcesserBatchSize: Joi.number().required(),
+  workReportsProcesserFilesCountLimit: Joi.number().required(),
   filesV2SyncBatchSize: Joi.number().required(),
   filesV2IndexAllKeyBatchSize: Joi.number().required(),
   filesV2IndexChangedSyncInterval: Joi.number().required(),

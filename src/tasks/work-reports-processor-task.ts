@@ -30,9 +30,13 @@ async function processWorkReports(
   // The default blocks to process batch size is 10
   // Right now there're around 1600 sworker nodes in the whole chain, 1600 work reports will be sent 
   // from the 10th to 399th block in one slot, that means 1600 wrs in 390 blocks, average 4~5 wrs/block
-  // 10 blocks will have around 50 work reports
-  let batchSize = config.chain.workReportsProcesserBatchSize;
-  let workReportsProcessorInterval = config.chain.workReportsProcessorInterval;
+  // 10 blocks will have around 50 work reports, assume average ~100 files/work report, 
+  // there would be ~5000 files in total, maximum 15000 files
+  const configBatchSize = config.chain.workReportsProcesserBatchSize;
+  const workReportsProcessorInterval = config.chain.workReportsProcessorInterval;
+
+  // Get the files count limit for each extrinsic call
+  const workReportsProcesserFilesCountLimit = config.chain.workReportsProcesserFilesCountLimit;
 
   while(!isStopped()) {
     try {
@@ -86,6 +90,7 @@ async function processWorkReports(
 
       // There maybe many work reports before the curBlock, so we need to loop here
       let round = 0;
+      let batchSize = configBatchSize;
       while(!isStopped()) {
         // Check the latest block and break out if larger than SPOWER_UPDATE_START_OFFSET
         const latestBlock: number = api.latestFinalizedBlock();
@@ -128,12 +133,17 @@ async function processWorkReports(
           }
         }
         /// -------------------------------------------------------
-        /// TODO: Check whether exceeds the files count limit, if exceeds, use a smaller batch size
-
-        logger.info(`Work reports count: ${totalWorkReportsCount}, Updated files count: ${filesInfoMap.size}, Updated Replicas count: ${totalReplicasCount}`);
+        /// Check whether exceeds the files count limit, if exceeds, use a smaller batch size, minimum batchSize is 1
+        if (filesInfoMap.size > workReportsProcesserFilesCountLimit && batchSize > 1) {
+          const frac = Math.ceil(filesInfoMap.size / workReportsProcesserFilesCountLimit);
+          batchSize = Math.ceil(configBatchSize / frac);
+          logger.info(`Retrieved files count: ${filesInfoMap.size} exceeds the files count limit: ${workReportsProcesserFilesCountLimit}, reprocess using a smaller batch size: ${batchSize}`);
+          continue;
+        }
 
         // ---------------------------------------------------------------
         // 2. Update the replicas data to Crust Mainnet Chain
+        logger.info(`Work reports count: ${totalWorkReportsCount}, Updated files count: ${filesInfoMap.size}, Updated Replicas count: ${totalReplicasCount}`);
         const result = await api.updateReplicas(filesInfoMap, _.last(blocksOfWorkReports).report_block);
         if (result === true) {
           await workReportsOp.updateStatus(recordIdsProcessed, 'processed');

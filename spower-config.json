@@ -6,6 +6,7 @@
     "password": "123456",
     "workReportsProcessorInterval":"2",
     "workReportsProcesserBatchSize": "10",
+    "workReportsProcesserFilesCountLimit":"10",
     "filesV2SyncBatchSize":"300",
     "filesV2IndexAllKeyBatchSize": "600",
     "filesV2IndexChangedSyncInterval": "10",
