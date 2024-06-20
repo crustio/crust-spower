@@ -44,15 +44,15 @@ async function indexFilesV2(
 
         let indexMode = await configOp.readString(KeyIndexMode) as IndexMode;
         if (_.isNil(indexMode) || _.isEmpty(indexMode)) {
-        logger.info(`No '${KeyIndexMode}' config found in DB, this is the first run, set index mode to 'index-all'`);
-        indexMode = IndexMode.IndexAll;
-        configOp.saveString(KeyIndexMode, indexMode);
+          logger.info(`No '${KeyIndexMode}' config found in DB, this is the first run, set index mode to 'index-all'`);
+          indexMode = IndexMode.IndexAll;
+          configOp.saveString(KeyIndexMode, indexMode);
         }
 
         if (indexMode == IndexMode.IndexAll) {
-        await indexAll(context, logger, isStopped);
+          await indexAll(context, logger, isStopped);
         } else {
-        await indexChanged(context, logger, isStopped);
+          await indexChanged(context, logger, isStopped);
         }
     } catch(err) {
         logger.error(`💥 Error to index FilesV2 data: ${err}`);
@@ -108,9 +108,10 @@ async function indexAll(
         const curBlock = api.latestFinalizedBlock();
         
         // Get storage keys in batch by lastIndexedKey
-        const keys = await (_.isEmpty(lastIndexedKey)
-        ? api.chainApi().rpc.state.getKeysPaged(MarketFilesV2StorageKey, indexBatchSize, null, indexAtBlockHash)
-        : api.chainApi().rpc.state.getKeysPaged(MarketFilesV2StorageKey, indexBatchSize, lastIndexedKey, indexAtBlockHash));
+        if (_.isEmpty(lastIndexedKey)) {
+          lastIndexedKey = MarketFilesV2StorageKey;
+        }
+        const keys = await api.chainApi().rpc.state.getKeysPaged(MarketFilesV2StorageKey, indexBatchSize, lastIndexedKey, indexAtBlockHash);
 
         // Convert the key to CID
         let cids = [];

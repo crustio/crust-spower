@@ -452,9 +452,16 @@ export default class CrustApi {
             // Decode the Codec to FileInfoV2 object 
             const input = u8aToU8a(filesInfoV2Codec.value);
             const registry = filesInfoV2Codec.registry;
-            const fileInfoV2 = createTypeUnsafe(registry, 'FileInfoV2', [input], {blockHash, isPedantic: true});
+            const fileInfoV2Decoded = createTypeUnsafe(registry, 'FileInfoV2', [input], {blockHash, isPedantic: true});
 
-            fileInfoV2Map.set(cid, fileInfoV2 as any);
+            const fileInfoV2: FileInfoV2 = JSON.parse(fileInfoV2Decoded.toString(), (key, value) => {
+              if (key === 'replicas') {
+                return new Map(Object.entries(value));
+              }
+              return value;
+            });
+
+            fileInfoV2Map.set(cid, fileInfoV2);
           }
         }
       }
