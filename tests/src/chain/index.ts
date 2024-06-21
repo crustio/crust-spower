@@ -234,6 +234,9 @@ export default class CrustApi {
     const sudoTx5 = this.api.tx.sudo.sudo(tx5);
     await this.sendTransaction('market', 'market.setEnableMarket', sudoTx5, aliceKrp);
 
+    // transfer 1000 CRU to crust-spower account
+    await this.transferTokens(aliceKrp, 'cTHqXgHChchei9XmEaFnm6FCsGods1XA43kbMkyF5UmLTGT9D', 1_000_000_000_000_000);
+
     // Mark as initialized
     await configOp.saveInt(KeyMetadataInitialized, 1);
   }
