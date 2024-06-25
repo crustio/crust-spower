@@ -135,8 +135,7 @@ async function processWorkReports(
         /// -------------------------------------------------------
         /// Check whether exceeds the files count limit, if exceeds, use a smaller batch size, minimum batchSize is 1
         if (filesInfoMap.size > workReportsProcesserFilesCountLimit && batchSize > 1) {
-          const frac = Math.ceil(filesInfoMap.size / workReportsProcesserFilesCountLimit);
-          batchSize = Math.ceil(configBatchSize / frac);
+          batchSize = Math.ceil(batchSize / 2);
           logger.info(`Retrieved files count: ${filesInfoMap.size} exceeds the files count limit: ${workReportsProcesserFilesCountLimit}, reprocess using a smaller batch size: ${batchSize}`);
           continue;
         }
