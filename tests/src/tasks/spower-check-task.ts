@@ -38,7 +38,7 @@ export async function runSpowerCheckTask(
             logger.info(`Not in the spower check block range, blockInSlot: ${blockInSlot}, wait for ${waitTime/1000} s`);
             await sleep(waitTime);
             continue;
-        }    
+        }
 
         // Get the last spower update block from chain
         const lastSpowerUpdateBlock = await api.getLastSpowerUpdateBlock();
@@ -113,9 +113,7 @@ export async function runSpowerCheckTask(
           // Compare the filesInfoV2MapChain and filesInfoV2MapLocal
           for (const [cid, fileInfoV2Chain] of fileInfoV2MapChain) {
             const fileInfoV2Local = filesInfoV2MapLocal.get(cid);
-            if (_.isNil(fileInfoV2Local)) {
-              logger.error(`💥💥💥 File not exist in local (${cid})`);
-            } else {
+            if (!_.isNil(fileInfoV2Local)) {
               if (fileInfoV2Chain.replicas.size != fileInfoV2Local.replicas.size) {
                 logger.error(`💥💥💥 File replicas count not equal: chain - ${fileInfoV2Chain.replicas.size}, local - ${fileInfoV2Local.replicas.size} (${cid})`);
               } else {
@@ -144,9 +142,10 @@ export async function runSpowerCheckTask(
           logger.info(`Checking spower value for sworker '${anchor}' at block '${lastSpowerUpdateBlock}'`);
 
           if (reportSlot != workReportReportSlot) {
-            logger.warn(`report slot not match: checking report slot - ${reportSlot}, work report slot - ${workReportReportSlot}`);
+            logger.warn(`💥💥 report slot not match: checking report slot - ${reportSlot}, work report slot - ${workReportReportSlot}`);
           } else {
-            const calculatedTotalSpower = sworkerSpowerMap.get(anchor);
+            let calculatedTotalSpower = sworkerSpowerMap.get(anchor);
+            calculatedTotalSpower = !_.isNil(calculatedTotalSpower) ? calculatedTotalSpower : BigInt(0);
             if (calculatedTotalSpower != workReport.spower) {
               logger.error(`💥💥💥 Total spower not match: calculated - ${calculatedTotalSpower}, work report total spower - ${workReport.spower}`);
             }
