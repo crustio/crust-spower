@@ -47,9 +47,9 @@ async function processWorkReports(
       await api.ensureConnection();
       const curBlock: number = api.latestFinalizedBlock();
 
-      // Only process the work reports within 10th ~ 390th block within one slot
-      // The reason for end block 390th is to give the final round some time to calculate and update the replicas on chain
-      // The spower-calculator-task will calculate the spower within the 400th ~ 490th block within the slot
+      // Only process the work reports within 10th ~ 400th block within one slot
+      // The reason for end block 400th is to give the final round some time to calculate and update the replicas on chain
+      // The spower-calculator-task will calculate the spower within the 410th ~ 490th block within the slot
       // Separate the replicas update and spower calculation to avoid race condition and inconsistent data
       const blockInSlot = curBlock % REPORT_SLOT;
       if ( blockInSlot < WORKREPORT_PROCESSOR_OFFSET || blockInSlot > (SPOWER_UPDATE_START_OFFSET-WORKREPORT_PROCESSOR_OFFSET) )  {

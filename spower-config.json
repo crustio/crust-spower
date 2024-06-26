@@ -4,14 +4,14 @@
     "endPoint": "ws://localhost:9944",
     "backup": "{\"encoded\":\"lND+h2U6gtarfJ6BqLWUEB7tYXzukss7bjgyUxA9l7sAgAAAAQAAAAgAAACYBqroWSU0nlzq1w1/bPIGTecPbEES3NWay0SpkqQeKXEiqGvmsIf5UCJSoTyVu72A+JZqnpwch72XHhEiJp4r0nZf+dxtrBAzY7LFeGATnLRmc7yGz8DE2Jttdq4m05j1APxKw1muRVaD4nMcOU16nSkc5UzMAYwu7rxOGqJ2AjfiMxJ2npbaInrXzIlgM3qVfjR//m5kindxm9G+\",\"encoding\":{\"content\":[\"pkcs8\",\"sr25519\"],\"type\":[\"scrypt\",\"xsalsa20-poly1305\"],\"version\":\"3\"},\"address\":\"cTHqXgHChchei9XmEaFnm6FCsGods1XA43kbMkyF5UmLTGT9D\",\"meta\":{\"isHardware\":false,\"name\":\"crust-spower\",\"tags\":[],\"whenCreated\":1716271018971}}",
     "password": "123456",
-    "workReportsProcessorInterval":"2",
+    "workReportsProcessorInterval":"10",
     "workReportsProcesserBatchSize": "10",
-    "workReportsProcesserFilesCountLimit":"10",
-    "filesV2SyncBatchSize":"300",
-    "filesV2IndexAllKeyBatchSize": "600",
+    "workReportsProcesserFilesCountLimit":"2000",
+    "filesV2SyncBatchSize":"200",
+    "filesV2IndexAllKeyBatchSize": "400",
     "filesV2IndexChangedSyncInterval": "10",
     "spowerReadyPeriod": "10",
-    "spowerCalculateBatchSize": "100"
+    "spowerCalculateBatchSize": "1000"
   },
   "telemetry": {
     "endPoint": "https://sm-submit.crust.network"
