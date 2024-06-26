@@ -75,6 +75,8 @@ async function generateOrders(context: AppContext, accountKrps: KeyringPair[]) {
   const { api, config } = context;
   const placeOrderFrequency = config.chain.placeOrderFrequency;
 
+  let generatedOrdersCount = await OrdersRecord.count();
+  const placeOrderLimit = config.chain.placeOrderLimit;
   while(true) {
     try {
       // Wait for the order place interval
@@ -114,6 +116,12 @@ async function generateOrders(context: AppContext, accountKrps: KeyringPair[]) {
         reported_as_illegal_file: size != reportSize,
         sender: krp.address
       });
+
+      generatedOrdersCount++;
+      if (generatedOrdersCount >= placeOrderLimit) {
+        logger.info(`Has generated ${placeOrderLimit} orders, stop generating orders`);
+        break;
+      }
     } catch(err) {
       logger.error(`💥 Error to generate orders: ${err}`);
     }

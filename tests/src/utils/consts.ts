@@ -11,6 +11,6 @@ export const LargeFileSize = 5 * 1024; // 5GB+ files are large files
 export const MarketFilesV2StorageKey = '0x5ebf094108ead4fefa73f7a3b13cb4a76ed21091d079415ef4a35264c626448d';
 
 export const REPORT_SLOT = 600;
-export const SPOWER_UPDATE_START_OFFSET = 400;
-export const SPOWER_UPDATE_END_OFFSET = 499;
+export const SPOWER_UPDATE_START_OFFSET = 410;
+export const SPOWER_UPDATE_END_OFFSET = 490;
 export const WORKREPORT_PROCESSOR_OFFSET = 10;

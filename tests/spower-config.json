@@ -1,10 +1,11 @@
 {
   "chain": {
     "endPoint": "ws://localhost:9944",
-    "placeOrderAccountsNumber": 3,
+    "placeOrderAccountsNumber": 2,
     "placeOrderFrequency": 1,
-    "groupAccountsNumber": 3,
-    "sworkerAccountsNumber": 6 
+    "placeOrderLimit": 1000,
+    "groupAccountsNumber": 35,
+    "sworkerAccountsNumber": 50
   },
   "database": {
     "dialect": "mysql",

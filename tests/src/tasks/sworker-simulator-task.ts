@@ -5,7 +5,6 @@ import { AccountsRecord, FilesRecord, GroupMembersRecord, OrdersRecord, SworkerK
 import { Keyring } from '@polkadot/api';
 import { KeyringPair } from '@polkadot/keyring/types';
 import { mnemonicGenerate, randomAsU8a  } from '@polkadot/util-crypto';
-import { assert } from 'console';
 import { u8aToHex } from '@polkadot/util';
 import { REPORT_SLOT, SPOWER_UPDATE_START_OFFSET, WORKREPORT_PROCESSOR_OFFSET } from '../utils/consts';
 import Bluebird from 'bluebird';
@@ -149,15 +148,19 @@ async function getOrGenerateGroupAndSworkerMap(context:AppContext, groupAddresse
     if (groupMembersRecords.length == 0) {
         // Distribute sworker accounts to group
         const groupCount = groupAddresses.length;
-        const chunkSize = Math.ceil(sworkerAddresses.length / groupCount);
-        const sworkerAddressChunks = _.chunk(sworkerAddresses, chunkSize);
-
-        assert(sworkerAddressChunks.length == groupCount);
+        const minChunkSize = Math.floor(sworkerAddresses.length / groupCount);
+        const additionalElements = sworkerAddresses.length % groupCount;
 
         const groupMemberList = [];
+        let currentIndex = 0;
         for (let i = 0; i < groupCount; i++) {
             const groupAddress = groupAddresses[i];
-            const sworkerAddressChunk = sworkerAddressChunks[i];
+
+            // Get the current chunk of sworker addresses
+            const numElements = minChunkSize + (i < additionalElements ? 1 : 0);
+            const sworkerAddressChunk = sworkerAddresses.slice(currentIndex, currentIndex + numElements);
+            currentIndex += numElements;
+            logger.debug(`Sliced sworker addresses chunk: ${sworkerAddressChunk.length}`);
 
             let membersList = groupMembersMap.get(groupAddress);
             if (_.isNil(membersList)) {
@@ -510,7 +513,7 @@ async function runSworkerSimulator(
                         cleanup_done: false
                     },
                     order: [['create_at', 'ASC']],
-                    limit: 300 // One work report has 300 files limit for added_files
+                    limit: 100 // One work report has 300 files limit for added_files
                 });
 
                 // Get to-delete files 
@@ -522,7 +525,7 @@ async function runSworkerSimulator(
                         cleanup_done: false
                     },
                     order: [['create_at', 'ASC']],
-                    limit: 295 // One work report has 300 files limit for deleted_files, leave 5 for random delete files
+                    limit: 50 // One work report has 300 files limit for deleted_files, leave 5 for random delete files
                 });
 
                 // Random delete files
@@ -612,12 +615,15 @@ async function runSworkerSimulator(
                             cid: file.cid,
                             group_address: groupAddress,
                             file_size: file.file_size,
+                            reported_sworker_address: sworkerAddress,
+                            reported_block: curBlock,
+                            reported_slot: reportSlot,
                             cleanup_done: true,
                             report_done: false
                         });
                     }
                     await FilesRecord.bulkCreate(toUpdateRecordsOfDeletedFiles,{
-                        updateOnDuplicate: ['cleanup_done', 'report_done'],
+                        updateOnDuplicate: ['reported_sworker_address', 'reported_block', 'reported_slot', 'cleanup_done', 'report_done'],
                         transaction
                     });
                 });
