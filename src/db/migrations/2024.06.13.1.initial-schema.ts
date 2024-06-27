@@ -95,7 +95,7 @@ async function createWorkReportsToProcessTable(sequelize: QueryInterface) {
     await sequelize.addIndex('work_reports_to_process', ['last_updated'], {
       transaction,
     });
-    await sequelize.addIndex('work_reports_to_process', ['create_at'], {
+    await sequelize.addIndex('work_reports_to_process', ['create_at','status'], {
       transaction,
     });
   });

@@ -96,6 +96,7 @@ export interface WorkReportsToProcessOperator {
   addWorkReports: (reportBlock: number, workReports: WorkReportsToProcess[]) => Promise<number>;
   getPendingWorkReports: (count: number, beforeBlock: number) => Promise<WorkReportsToProcessRecord[]>;
   updateStatus: (ids: number[], status: WorkReportsProcessStatus) => DbWriteResult;
+  purgeRecords: (persistTimeInHours: number) => Promise<number>;
 };
 
 /// ------------------------------------------------

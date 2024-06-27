@@ -6,6 +6,7 @@ import { createWorkReportsIndexer } from './work-reports-indexer-task';
 import { createWorkReportsProcessor } from './work-reports-processor-task';
 import { createFilesV2Indexer } from './files-v2-indexer-task';
 import { createSpowerCalculator } from './spower-calculator-task';
+import { createDatabasePurgeTask } from './database-purge-task';
 
 /**
  * create simpile tasks which only handle start/stop
@@ -18,7 +19,8 @@ export async function createSimpleTasks(
     createWorkReportsIndexer,
     createWorkReportsProcessor,
     createFilesV2Indexer,
-    createSpowerCalculator
+    createSpowerCalculator,
+    createDatabasePurgeTask,
   ];
   return Bluebird.mapSeries(tasks, (t) => {
     return t(context, logger);

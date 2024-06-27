@@ -2,7 +2,7 @@ import { Op, Sequelize } from 'sequelize';
 import { WorkReportsToProcessOperator, WorkReportsToProcessRecord, WorkReportsProcessStatus } from '../types/database';
 import { WorkReportsToProcess } from '../types/chain';
 
-export function createWorkReportsToProcessOperator(_db: Sequelize): WorkReportsToProcessOperator {
+export function createWorkReportsToProcessOperator(db: Sequelize): WorkReportsToProcessOperator {
 
   const addWorkReports = async (
     reportBlock: number, 
@@ -53,10 +53,31 @@ export function createWorkReportsToProcessOperator(_db: Sequelize): WorkReportsT
     }
   };
 
+  const purgeRecords = async (persistTimeInHours: number): Promise<number> => {
+
+    const thresholdDate = new Date(Date.now() - persistTimeInHours * 3600 * 1000);
+
+    let deletedRowsCount = 0;
+    db.transaction(async (transaction) => {
+      deletedRowsCount = await WorkReportsToProcessRecord.destroy({
+            where: { 
+                create_at: {
+                    [Op.lt]: thresholdDate
+                },
+                status: 'processed' 
+            },
+            transaction
+            });
+    });
+    
+    return deletedRowsCount;
+  }
+
   
   return {
     addWorkReports,
     getPendingWorkReports,
-    updateStatus
+    updateStatus,
+    purgeRecords
   };
 }
