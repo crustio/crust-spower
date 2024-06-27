@@ -254,19 +254,32 @@ async function registerSworkerAndJoinGroup(context: AppContext, sworkerAccount: 
         reported_files_root: '0x',
         sig: '0x',
     };
-    // report empty work report to registration
-    await api.sworkerReportWorks(sworkerAccount, workReport);
-    // Save the work report to DB
-    await WorkReportsRecord.create({
-        sworker_address: sworkerAccount.address,
-        report_block: curBlock,
-        report_done: true,
-        ...workReport,
-        added_files: stringifyEx(workReport.added_files),
-        deleted_files: stringifyEx(workReport.deleted_files),
-    });
 
-    await api.joinGroup(sworkerAccount, groupAccount.address);
+    while(true) {
+        // report empty work report to registration
+        const result = await api.sworkerReportWorks(sworkerAccount, workReport);
+        if (result) {
+            // Save the work report to DB
+            await WorkReportsRecord.create({
+                sworker_address: sworkerAccount.address,
+                report_block: curBlock,
+                report_done: true,
+                ...workReport,
+                added_files: stringifyEx(workReport.added_files),
+                deleted_files: stringifyEx(workReport.deleted_files),
+            });
+
+            await api.joinGroup(sworkerAccount, groupAccount.address);
+
+            // Exit the loop
+            break;
+        } else {
+            // Sometimes it may failed with InvalidReportTime due out of date reportSlot, so retry again
+            logger.warn(`sworker.reportWorks failed, retry again...`);
+            await Bluebird.delay(1000);
+            continue;
+        }  
+    }
 }
 
 async function simulateSmanagerAndSworkers(context: AppContext, 
