@@ -27,7 +27,7 @@ export async function makeIntervalTask(
     if (stopped) {
       return;
     }
-    let startTime = performance.now();
+    const startTime = performance.now();
     try {
       if (showIndicateLog) {
         logger.info(`start task: "${name}"`);
@@ -41,7 +41,7 @@ export async function makeIntervalTask(
       );
     } finally {
       if (showIndicateLog) {
-        let endTime = performance.now();
+        const endTime = performance.now();
         logger.info(`task done: "${name}". Time cost: ${(endTime-startTime).toFixed(2)}ms`);
       }
       if (!stopped) {

@@ -73,7 +73,7 @@ async function calculateSpower(
       // Make sure the files-v2-indexer has reached to the latest block, to avoid race condition to update file_info
       // between files-v2-indexer and spower-calculator
       // This logic has the assumption that work-reports-processor do NOT update replicas within the 400th and 499th block of this slot
-      let lastFilesV2IndexBlock = await configOp.readInt(KeyIndexChangedLastIndexBlock);
+      const lastFilesV2IndexBlock = await configOp.readInt(KeyIndexChangedLastIndexBlock);
       const lastFilesV2SyncSlot = convertBlockNumberToReportSlot(lastFilesV2IndexBlock);
       const curBlockSlot = convertBlockNumberToReportSlot(curBlock);
       if (_.isNil(lastFilesV2IndexBlock)
@@ -97,7 +97,7 @@ async function calculateSpower(
       // Get the last spower update block from chain, and check it with the one in config DB
       // There may be case that on chain update success, but client doesn't receive the result(due to 
       // like network interruption, client be killed or crash, etc), so check the on chain status here to avoid repeated calculation
-      let lastSpowerUpdateBlockOnChain = await api.getLastSpowerUpdateBlock();
+      const lastSpowerUpdateBlockOnChain = await api.getLastSpowerUpdateBlock();
       if (lastSpowerUpdateBlockOnChain > lastSpowerUpdateBlock) {
         logger.warn(`Inconsistent 'LastSpowerUpdateBlock' between on chain (${lastSpowerUpdateBlockOnChain}) and local (${lastSpowerUpdateBlock}).
                        Mark the is_spower_updating records as success`);
@@ -135,10 +135,10 @@ async function calculateSpower(
 
       // 1. Construct the filesInfoV2Map structure
       logger.debug(`1. Construct the filesInfoV2Map structure`);
-      let fileInfoV2Map = new Map<string, FileInfoV2>();
-      let allCids: string[] = [];
+      const fileInfoV2Map = new Map<string, FileInfoV2>();
+      const allCids: string[] = [];
       for (const record of filesToCalcRecords) {
-        let fileInfoV2: FileInfoV2 = JSON.parse(record.file_info, (key, value) => {
+        const fileInfoV2: FileInfoV2 = JSON.parse(record.file_info, (key, value) => {
           if (key === 'replicas') {
             return new Map(Object.entries(value));
           }
@@ -151,8 +151,8 @@ async function calculateSpower(
       // 2. Calculate the new spower for all the updated files
       logger.debug(`2. Calculate the new spower for all the updated files`);
 
-      let fileNewSpowerMap = new Map<string, bigint>();
-      let filesChangedMap = new Map<string, ChangedFileInfo>();
+      const fileNewSpowerMap = new Map<string, bigint>();
+      const filesChangedMap = new Map<string, ChangedFileInfo>();
       for (const record of filesToCalcRecords) {
         const cid = record.cid;
         const fileInfoV2 = fileInfoV2Map.get(cid);
@@ -173,9 +173,9 @@ async function calculateSpower(
       // 3. Calculate the Sworker_anchor -> ChangedSpower map and changed replicas map
       logger.debug(`Calculate the Sworker_anchor -> ChangedSpower map and changed replicas map`);
 
-      let sworkerChangedSpowerMap = new Map<string, bigint>(); // Key is sworker anchor, value is changed spower
-      let toDeleteCids: string[] = [];
-      let toUpdateRecords: FilesV2Record[] = [];
+      const sworkerChangedSpowerMap = new Map<string, bigint>(); // Key is sworker anchor, value is changed spower
+      const toDeleteCids: string[] = [];
+      const toUpdateRecords: FilesV2Record[] = [];
       for (const record of filesToCalcRecords) {
         const cid = record.cid;
         const fileInfoV2 = fileInfoV2Map.get(cid);
@@ -211,7 +211,7 @@ async function calculateSpower(
                   replica.created_at = null;
 
                   // Add to the filesChangedMap
-                  let changedFileInfoV2 = filesChangedMap.get(cid);
+                  const changedFileInfoV2 = filesChangedMap.get(cid);
                   changedFileInfoV2.replicas.set(owner, replica);
                 }
               }
@@ -321,7 +321,7 @@ const SpowerLookupTable =
   ];
 
 function calculateFileSpower(fileSize: bigint, reportedReplicaCount: number): bigint {
-  let { alpha, multiplier } = SpowerLookupTable.find(entry =>
+  const { alpha, multiplier } = SpowerLookupTable.find(entry =>
     reportedReplicaCount >= entry.range[0] && reportedReplicaCount <= entry.range[1]
   );
 

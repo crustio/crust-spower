@@ -21,7 +21,7 @@ export default class CrustSpowerHttpServer {
     this.app = express();
   }
 
-  async initServer() {
+  async initServer(): Promise<void> {
 
     this.app.use(bodyParser.json({limit: '50mb'}));
     this.app.use(bodyParser.urlencoded({limit: '50mb', extended: true}));
@@ -45,7 +45,7 @@ export default class CrustSpowerHttpServer {
     });
   }
 
-  async run() {
+  async run(): Promise<void> {
     this.app.listen(this.port, () => {
       logger.info(
         `⚡️ [global]: Crust Spower HTTP API Server is running at https://localhost:${this.port}`

@@ -114,14 +114,14 @@ async function processWorkReports(
         // -----------------------------------------------------------
         // 1. Aggregate all work reports to file replicas info
         const filesInfoMap = new Map<string, FileToUpdate>(); // Key is cid
-        let recordIdsProcessed = [];
+        const recordIdsProcessed = [];
         let totalWorkReportsCount = 0;
         let totalReplicasCount = 0;
         for (const record of blocksOfWorkReports) {
           recordIdsProcessed.push(record.id);
           const workReports: WorkReportsToProcess[] = JSON.parse(record.work_reports) as WorkReportsToProcess[];
           for (const wr of workReports) {
-            let { added_files, deleted_files } = wr;
+            const { added_files, deleted_files } = wr;
 
             const added_files_array: [] = _.isNil(added_files) ? [] : added_files;
             const deleted_files_array: [] = _.isNil(deleted_files) ? [] : deleted_files;
@@ -180,7 +180,7 @@ function createFileReplicas(filesInfoMap: Map<string, FileToUpdate>, wr: WorkRep
       filesInfoMap.set(cid, fileInfo);
     }
 
-    let fileReplica: ReplicaToUpdate = {
+    const fileReplica: ReplicaToUpdate = {
       reporter: wr.reporter,
       owner: wr.owner,
       sworker_anchor: wr.sworker_anchor,

@@ -114,10 +114,10 @@ async function indexAll(
         const keys = await api.chainApi().rpc.state.getKeysPaged(MarketFilesV2StorageKey, indexBatchSize, lastIndexedKey, indexAtBlockHash);
 
         // Convert the key to CID
-        let cids = [];
+        const cids = [];
         let newLastIndexedKey = null;
-        for (let storageKey of keys) {
-            let key = storageKey.toString();
+        for (const storageKey of keys) {
+            const key = storageKey.toString();
             if (key !== lastIndexedKey) {
                 const cid = cidFromStorageKey(key);
                 if (!_.isNil(cid)) {
@@ -259,7 +259,7 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
         logger.debug(`Get ${fileInfoV2Map.size} FileInfoV2 data from chain at block '${atBlock}'`);
 
         // Construct the batch toUpsertRecords
-        let toUpsertRecords = [];
+        const toUpsertRecords = [];
         for (const [cid, fileInfo] of fileInfoV2Map) {
           // Calculate the next_spower_update_block for non-expired files
           // The next_spower_update_block is the minimum create_at block + SpowerDelayPeriod

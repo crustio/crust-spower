@@ -32,8 +32,8 @@ const defaultLogger = createLogger({
     // - Write all logs error (and below) to `crust-spower-test-error.log`.
     //
     new transports.Console(),
-    new transports.File({ filename: 'crust-spower-test-error.log', level: 'error' }),
-    new transports.File({ filename: 'crust-spower-test-combined.log' }),
+    new transports.File({ filename: 'logs/crust-spower-test-error.log', level: 'error' }),
+    new transports.File({ filename: 'logs/crust-spower-test-combined.log' }),
   ],
 });
 

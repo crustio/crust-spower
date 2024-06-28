@@ -13,7 +13,7 @@ export function createFilesV2Operator(db: Sequelize): FilesV2Operator {
     })
 
     // Bulk upsert
-    let toUpsertRecords = [];
+    const toUpsertRecords = [];
     for (const cid of cids) {
       toUpsertRecords.push({
         cid,
@@ -96,7 +96,7 @@ export function createFilesV2Operator(db: Sequelize): FilesV2Operator {
   ): Promise<number> => {
 
     // If record is Model type, need to transform it to object
-    let toUpdateRecords = [];
+    const toUpdateRecords = [];
     for (const record of records) {
       if (record instanceof Model) {
         toUpdateRecords.push(record.toJSON());

@@ -4,8 +4,8 @@
     "placeOrderAccountsNumber": 2,
     "placeOrderFrequency": 1,
     "placeOrderLimit": 1000,
-    "groupAccountsNumber": 35,
-    "sworkerAccountsNumber": 50
+    "groupAccountsNumber": 20,
+    "sworkerAccountsNumber": 40
   },
   "database": {
     "dialect": "mysql",

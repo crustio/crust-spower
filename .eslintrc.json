@@ -16,5 +16,9 @@
     "plugin:@typescript-eslint/recommended",
     "prettier"
   ],
-  "rules": {}
+  "rules": {
+    "no-constant-condition": "off",
+    "@typescript-eslint/ban-types": "off",
+    "@typescript-eslint/no-explicit-any": "off"
+  }
 }

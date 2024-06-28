@@ -135,7 +135,7 @@ async function uploadToIPFS(fileContent: any, pair: KeyringPair) {
   const sigHex = '0x' + Buffer.from(sig).toString('hex');
   const authHeader = Buffer.from(`sub-${pair.address}:${sigHex}`).toString('base64');
   const ipfsRemote = create({
-      url: `https://gw.crustfiles.net/api/v0`,
+      url: `https://gw.crust-gateway.work/api/v0`,
       headers: {
           authorization: `Basic ${authHeader}`
       }

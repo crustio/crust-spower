@@ -297,9 +297,9 @@ export default class CrustApi {
    */
   async getWorkReportsToProcess(atBlock: number): Promise<WorkReportsToProcess[]> {
 
-    let startTime = performance.now();
+    const startTime = performance.now();
     await this.withApiReady();
-    let workReportsToProcess = [];
+    const workReportsToProcess = [];
     try {
       const hash = await this.getBlockHash(atBlock);
       const block = await this.api.rpc.chain.getBlock(hash);
@@ -324,7 +324,7 @@ export default class CrustApi {
           const reporter = data[1];
           const owner = data[2];
 
-          let workReport: WorkReportsToProcess = {
+          const workReport: WorkReportsToProcess = {
               sworker_anchor: sworkerAnchor.toString(),
               report_slot: parseObj(report_slot),
               report_block: atBlock,
@@ -343,7 +343,7 @@ export default class CrustApi {
     } catch (err) {
       logger.error(`💥 Error to query work reports from chain: ${err}`);
     } finally {
-      let endTime = performance.now();
+      const endTime = performance.now();
       logger.debug(`End to get ${workReportsToProcess.length} work reports from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
     
@@ -361,9 +361,9 @@ export default class CrustApi {
   }
   
   async getReplicasUpdatedFiles(atBlock: number): Promise<string[]> {
-    let startTime = performance.now();
+    const startTime = performance.now();
     await this.withApiReady();
-    let cids = [];
+    const cids = [];
     try {
       const hash = await this.getBlockHash(atBlock);
       const block = await this.api.rpc.chain.getBlock(hash);
@@ -388,7 +388,7 @@ export default class CrustApi {
       logger.error(`💥 Error to get replicas updated files from chain: ${err}`);
       throw err;
     } finally {
-      let endTime = performance.now();
+      const endTime = performance.now();
       logger.debug(`End to get ${cids.length} updated files from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
@@ -396,9 +396,9 @@ export default class CrustApi {
   }
 
   async getClosedFiles(atBlock: number): Promise<string[]> {
-    let startTime = performance.now();
+    const startTime = performance.now();
     await this.withApiReady();
-    let cids = [];
+    const cids = [];
     try {
       const hash = await this.getBlockHash(atBlock);
       const events: EventRecord[] = await this.api.query.system.events.at(hash);
@@ -414,7 +414,7 @@ export default class CrustApi {
       logger.error(`💥 Error to get closed files from chain: ${err}`);
       throw err;
     } finally {
-      let endTime = performance.now();
+      const endTime = performance.now();
       logger.debug(`End to get ${cids.length} closed files from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
@@ -424,14 +424,14 @@ export default class CrustApi {
 
   async getFilesInfoV2(cids: string[], atBlock: number): Promise<Map<string, FileInfoV2>> {
 
-    let startTime = performance.now();
+    const startTime = performance.now();
     await this.withApiReady();
-    let fileInfoV2Map = new Map<string, FileInfoV2>();
+    const fileInfoV2Map = new Map<string, FileInfoV2>();
     try {
       const blockHash = await this.getBlockHash(atBlock);
 
       // Generate the related storage keys
-      let storageKeys = [];
+      const storageKeys = [];
       for (const cid of cids) {
         storageKeys.push(this.api.query.market.filesV2.key(cid));
       }
@@ -469,7 +469,7 @@ export default class CrustApi {
       logger.error(`💥 Error to get files info v2 from chain: ${err}`);
         throw err;
     } finally {
-      let endTime = performance.now();
+      const endTime = performance.now();
       logger.debug(`End to get ${fileInfoV2Map.size} files info v2 from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
@@ -482,11 +482,11 @@ export default class CrustApi {
       return false;
     }
 
-    let startTime = performance.now();
+    const startTime = performance.now();
     await this.withApiReady();
     try {
       // Construct the transaction body data
-      let fileInfoMapBody = [];
+      const fileInfoMapBody = [];
       filesInfoMap.forEach((fileInfo, cid) => {
         const entry = [cid, fileInfo.file_size, fileInfo.replicas.map((replica) =>{
           return [replica.reporter, replica.owner, replica.sworker_anchor, replica.report_slot, replica.report_block, replica.valid_at, replica.is_added];
@@ -511,7 +511,7 @@ export default class CrustApi {
     } catch (err) {
       logger.error(`💥 Error to update replicas data to chain: ${err}`);
     } finally {
-      let endTime = performance.now();
+      const endTime = performance.now();
       logger.debug(`End to update replicas data to chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
@@ -536,7 +536,7 @@ export default class CrustApi {
       return false;
     }
 
-    let startTime = performance.now();
+    const startTime = performance.now();
     await this.withApiReady();
     try {
       // Construct the update_spower call arguments body, the argument type is as follows on chain:
@@ -544,14 +544,14 @@ export default class CrustApi {
       //     Vector of (SworkerAnchor, changed_spower_value)
       // changed_files:
       //     Vec<(cid, spower, Vec<(owner, who, anchor, created_at)>)>
-      let changed_spowers = [];
-      let changed_files = [];
+      const changed_spowers = [];
+      const changed_files = [];
       for (const [anchor, changedSpower] of sworkerChangedSpowerMap) {
         const entry = [anchor, changedSpower];
         changed_spowers.push(entry);
       }
       for (const [cid, changedFileInfo] of filesChangedMap) {
-        let replicas_vec = [];
+        const replicas_vec = [];
         for (const [owner, replica] of changedFileInfo.replicas) {
           const replica_entry = [owner, replica.who, replica.anchor, replica.created_at];
           replicas_vec.push(replica_entry);
@@ -577,7 +577,7 @@ export default class CrustApi {
     } catch (err) {
       logger.error(`💥 Error to update spower data to chain: ${err}`);
     } finally {
-      let endTime = performance.now();
+      const endTime = performance.now();
       logger.debug(`End to update spower data to chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
