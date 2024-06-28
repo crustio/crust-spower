@@ -26,8 +26,13 @@ export interface DatabaseConfig {
   database: string;
 }
 
+export interface ApiConfig {
+  port: number;
+}
+
 export interface SPowerConfig {
   chain: ChainConfig;
   telemetry: TelemetryConfig;
   database: DatabaseConfig;
+  api: ApiConfig;
 }

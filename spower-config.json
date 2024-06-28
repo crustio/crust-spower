@@ -23,5 +23,8 @@
     "username": "root",
     "password": "123456",
     "database": "crust_spower"
+  },
+  "api": {
+    "port": 16688
   }
 }

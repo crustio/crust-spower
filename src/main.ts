@@ -11,6 +11,7 @@ import { Dayjs } from './utils/datetime';
 import { logger } from './utils/logger';
 import { timeout, timeoutOrError } from './utils/promise-utils';
 import { sleep } from './utils';
+import CrustSpowerHttpServer from './http';
 
 const ConfigFile = process.env['SPOWER_CONFIG'] || 'spower-config.json';
 export const MaxNoNewBlockDuration = Dayjs.duration({
@@ -46,7 +47,11 @@ async function main() {
     await api.reconnect();
 
     // start tasks
+    logger.info('start tasks...');
     _.forEach(simpleTasks, (t) => t.start(context));
+
+    // start http api server
+    await startHttpServer(context);
 
     // keep alive
     do {
@@ -101,6 +106,15 @@ async function waitChainSynced(context: AppContext): Promise<void> {
     }
   }
   throw new Error('time too long to wait for chain synced!');
+}
+
+async function startHttpServer(context: AppContext): Promise<void> {
+
+  const apiServer = new CrustSpowerHttpServer(context);
+
+  await apiServer.initServer();
+
+  await apiServer.run();
 }
 
 main()

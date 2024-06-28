@@ -30,11 +30,16 @@ const telemetryConfigSchema = Joi.object().keys({
   endPoint: Joi.string().required(),
 });
 
+const apiConfigSchema = Joi.object().keys({
+  port: Joi.number().required(),
+});
+
 const configSchema = Joi.object()
   .keys({
     chain: chainConfigSchema.required(),
     telemetry: telemetryConfigSchema.required(),
     database: databaseConfigSchema.required(),
+    api: apiConfigSchema.required(),
   })
   .unknown();
 
