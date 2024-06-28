@@ -57,7 +57,7 @@ export async function runSworkerSimulatorTask(
 async function getOrGeneratAccounts(context: AppContext, type: string, count: number): Promise<Map<string, KeyringPair>> {
 
   const { api } = context;
-  let accountKrps = new Map<string, KeyringPair>();
+  const accountKrps = new Map<string, KeyringPair>();
 
   // Read accounts from DB
   const accounts = await AccountsRecord.findAll({ where: { type: type } });
@@ -66,7 +66,7 @@ async function getOrGeneratAccounts(context: AppContext, type: string, count: nu
   const kr = new Keyring({ type: 'sr25519' });
   kr.setSS58Format(66);
   if (accounts.length == 0) {
-    let generatedAccounts = [];
+    const generatedAccounts = [];
     for (let i = 0; i < count; i++) {
         const mnemonic = mnemonicGenerate();
         const pair = kr.addFromUri(mnemonic);
@@ -653,8 +653,6 @@ async function runSworkerSimulator(
                     logger.info(`Report works failed, reset the record`);
                     restoreData(sworkerAddress, groupAddress, reportSlot, database);
                 }
-            } catch(err) {
-                throw err;
             } finally {
                 release();
             }

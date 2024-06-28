@@ -27,7 +27,7 @@ async function getOrGeneratAccounts(context: AppContext): Promise<KeyringPair[]>
 
   const { api, config } = context;
   const placeOrderAccountsNumber = config.chain.placeOrderAccountsNumber;
-  let accountKrps: KeyringPair[] = [];
+  const accountKrps: KeyringPair[] = [];
 
   // Read accounts from DB
   const accounts = await AccountsRecord.findAll({ where: { type: 'order-placer' } });
@@ -36,7 +36,7 @@ async function getOrGeneratAccounts(context: AppContext): Promise<KeyringPair[]>
   const kr = new Keyring({ type: 'sr25519' });
   kr.setSS58Format(66);
   if (accounts.length == 0) {
-    let generatedAccounts = [];
+    const generatedAccounts = [];
     for (let i = 0; i < placeOrderAccountsNumber; i++) {
         const mnemonic = mnemonicGenerate();
         const pair = kr.addFromUri(mnemonic);
@@ -94,7 +94,7 @@ async function generateOrders(context: AppContext, accountKrps: KeyringPair[]) {
 
       // 3. Upload to IPFS
       logger.info(`Uploading file to IPFS...`);
-      let { cid, size } = await uploadToIPFS(fileContent, krp);
+      const { cid, size } = await uploadToIPFS(fileContent, krp);
       logger.info(`Uploaded file to IPFS, cid: ${cid}, size: ${size}`);
 
       // 4. Place storage order to crust

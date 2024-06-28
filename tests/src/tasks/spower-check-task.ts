@@ -188,10 +188,10 @@ async function getFilesV2Data(context: AppContext, lastIndexedKey: string, atBlo
   const keys = await api.chainApi().rpc.state.getKeysPaged(MarketFilesV2StorageKey, FilesV2PageSize, lastIndexedKey, blockHash);
 
   // Convert the key to CID
-  let cids = [];
+  const cids = [];
   let newLastIndexedKey = null;
-  for (let storageKey of keys) {
-      let key = storageKey.toString();
+  for (const storageKey of keys) {
+      const key = storageKey.toString();
       if (key !== lastIndexedKey) {
           const cid = cidFromStorageKey(key);
           if (!_.isNil(cid)) {

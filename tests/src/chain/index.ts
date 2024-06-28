@@ -420,14 +420,14 @@ export default class CrustApi {
 
   async getFilesInfoV2(cids: string[], atBlock: number): Promise<Map<string, FileInfoV2>> {
 
-    let startTime = performance.now();
+    const startTime = performance.now();
     await this.withApiReady();
-    let fileInfoV2Map = new Map<string, FileInfoV2>();
+    const fileInfoV2Map = new Map<string, FileInfoV2>();
     try {
       const blockHash = await this.getBlockHash(atBlock);
 
       // Generate the related storage keys
-      let storageKeys = [];
+      const storageKeys = [];
       for (const cid of cids) {
         storageKeys.push(this.api.query.market.filesV2.key(cid));
       }
@@ -465,7 +465,7 @@ export default class CrustApi {
       logger.error(`💥 Error to get files info v2 from chain: ${err}`);
         throw err;
     } finally {
-      let endTime = performance.now();
+      const endTime = performance.now();
       logger.debug(`End to get ${fileInfoV2Map.size} files info v2 from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
     }
 
