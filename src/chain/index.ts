@@ -15,6 +15,7 @@ import {ITuple} from '@polkadot/types/types';
 import { SPowerConfig } from '../types/spower-config';
 import { u8aToU8a } from '@polkadot/util';
 import { createTypeUnsafe } from '@polkadot/types/create';
+import { performance } from 'perf_hooks';
 
 export type Identity = typeof crustTypes.swork.types.Identity;
 

@@ -16,6 +16,7 @@ import { AppContext } from '../types/context';
 import { createConfigOps } from '../db/configs';
 import { u8aToU8a } from '@polkadot/util';
 import { createTypeUnsafe } from '@polkadot/types/create';
+import { performance } from 'perf_hooks';
 
 export type Identity = typeof crustTypes.swork.types.Identity;
 

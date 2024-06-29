@@ -4,6 +4,7 @@ import { AppContext } from '../types/context';
 import { SimpleTask } from '../types/tasks';
 import { formatError } from '../utils';
 import { createChildLoggerWith } from '../utils/logger';
+import { performance } from 'perf_hooks';
 
 export type IsStopped = Function0<boolean>;
 
