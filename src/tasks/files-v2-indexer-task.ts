@@ -144,7 +144,7 @@ async function indexAll(
 
         // Save the last indexed key
         lastIndexedKey = newLastIndexedKey;
-        await config.saveString(KeyIndexAllLastIndexKey, newLastIndexedKey);
+        await configOp.saveString(KeyIndexAllLastIndexKey, newLastIndexedKey);
 
     } catch (err) {
         logger.error(`💥 Error to index all market.FilesV2 data: ${err}`);
