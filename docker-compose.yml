@@ -1,0 +1,25 @@
+version: '3.0'
+
+services:
+  mysql:
+    image: mysql:latest
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: 1234567
+    volumes:
+      - ./mysqldata:/var/lib/mysql
+    network_mode: host
+
+  crust-spower:
+    image: crustio/crust-spower:latest
+    container_name: crust-spower
+    restart: unless-stopped
+    environment:
+      SPOWER_CONFIG: /config/spower-config.json
+    volumes:
+      - ./config:/config
+      - ./logs:/opt/crust-spower/logs
+    network_mode: host
+    depends_on:
+      - mysql
