@@ -11,7 +11,7 @@ import _ from 'lodash';
 import { createWorkReportsToProcessOperator } from '../db/work-reports-to-process';
 
 const KeyWorkReportsToProcessTablePersistTime = 'database-purge-task:work-reports-to-process-table-persist-time-in-hours'; 
-const DefaultWorkReportsToProcessTablePersistTime = 1; // Unit in hours, default to keep 14 days 
+const DefaultWorkReportsToProcessTablePersistTime = 336; // Unit in hours, default to keep 14 days 
 
 /**
  * main entry funciton for the task
