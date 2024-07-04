@@ -102,7 +102,15 @@ export interface WorkReportsToProcessOperator {
 /// ------------------------------------------------
 /// files_v2 table
 export class FilesV2Record extends Model<InferAttributes<FilesV2Record>, InferCreationAttributes<FilesV2Record>> {
-  declare cid: string
+  declare cid: string;
+  declare file_size: bigint | null;
+  declare spower: bigint | null;
+  declare expired_at: number | null;
+  declare calculated_at: number | null;
+  declare amount: bigint | null;
+  declare prepaid: bigint | null;
+  declare reported_replica_count: number | null;
+  declare remaining_paid_count: number | null;
   declare file_info: string | null;
   declare last_sync_block: number | null;
   declare last_sync_time: Date | null;
@@ -121,6 +129,38 @@ export class FilesV2Record extends Model<InferAttributes<FilesV2Record>, InferCr
         type: DataTypes.STRING,
         allowNull: false,
         primaryKey: true,
+      },
+      file_size: {
+        type: DataTypes.BIGINT,
+        allowNull: true,
+      },
+      spower: {
+        type: DataTypes.BIGINT,
+        allowNull: true,
+      },
+      expired_at: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      calculated_at: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      amount: {
+        type: DataTypes.BIGINT,
+        allowNull: true,
+      },
+      prepaid: {
+        type: DataTypes.BIGINT,
+        allowNull: true,
+      },
+      reported_replica_count: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      remaining_paid_count: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
       },
       file_info: {
         type: DataTypes.TEXT('medium'),

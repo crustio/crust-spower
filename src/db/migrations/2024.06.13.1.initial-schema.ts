@@ -111,6 +111,38 @@ async function createFilesV2Table(sequelize: QueryInterface) {
           allowNull: false,
           primaryKey: true,
         },
+        file_size: {
+          type: DataTypes.BIGINT,
+          allowNull: true,
+        },
+        spower: {
+          type: DataTypes.BIGINT,
+          allowNull: true,
+        },
+        expired_at: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+        },
+        calculated_at: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+        },
+        amount: {
+          type: DataTypes.BIGINT,
+          allowNull: true,
+        },
+        prepaid: {
+          type: DataTypes.BIGINT,
+          allowNull: true,
+        },
+        reported_replica_count: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+        },
+        remaining_paid_count: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+        },
         file_info: {
           type: DataTypes.TEXT('medium'),
           allowNull: true,

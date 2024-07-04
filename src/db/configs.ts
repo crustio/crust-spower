@@ -3,6 +3,7 @@ import _ from 'lodash';
 import { Sequelize, Transaction } from 'sequelize';
 import { ConfigOperator, ConfigRecord, DbResult, DbWriteResult } from '../types/database';
 import { logger } from '../utils/logger';
+import { stringifyEx } from '../utils';
 
 export function createConfigOps(_db: Sequelize): ConfigOperator {
   const readString = async (name: string): DbResult<string> => {
@@ -68,7 +69,7 @@ export function createConfigOps(_db: Sequelize): ConfigOperator {
     return null;
   };
   const saveJson = async (name: string, v: unknown, transaction?: Transaction): DbWriteResult => {
-    await saveString(name, JSON.stringify(v), transaction);
+    await saveString(name, stringifyEx(v), transaction);
   };
   return {
     readString,
