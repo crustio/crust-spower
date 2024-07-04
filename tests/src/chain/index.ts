@@ -95,9 +95,9 @@ export default class CrustApi {
   // reconnect this api instance
   async reconnect(): Promise<void> {
     await this.stop();
-    await Bluebird.delay(30 * 1000);
+    await Bluebird.delay(5 * 1000);
     await this.initApi();
-    await Bluebird.delay(10 * 1000);
+    await Bluebird.delay(3 * 1000);
   }
 
   isConnected(): boolean {
