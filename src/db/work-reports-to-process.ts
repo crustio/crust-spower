@@ -1,6 +1,7 @@
 import { Op, Sequelize } from 'sequelize';
 import { WorkReportsToProcessOperator, WorkReportsToProcessRecord, WorkReportsProcessStatus } from '../types/database';
 import { WorkReportsToProcess } from '../types/chain';
+import { stringifyEx } from '../utils';
 
 export function createWorkReportsToProcessOperator(db: Sequelize): WorkReportsToProcessOperator {
 
@@ -16,7 +17,7 @@ export function createWorkReportsToProcessOperator(db: Sequelize): WorkReportsTo
 
     const [ _record, created ] = await WorkReportsToProcessRecord.upsert({
       report_block: reportBlock,
-      work_reports: JSON.stringify(workReports),
+      work_reports: stringifyEx(workReports),
       status: 'new',
     });
 

@@ -327,13 +327,13 @@ export default class CrustApi {
 
           const workReport: WorkReportsToProcess = {
               sworker_anchor: sworkerAnchor.toString(),
-              report_slot: parseObj(report_slot),
+              report_slot: parseInt(report_slot as any),
               report_block: atBlock,
               extrinsic_index: exIdx,
               reporter: reporter.toString(),
               owner: owner.toString(),
-              reported_srd_size: reported_srd_size ? parseObj(reported_srd_size): BigInt(0),
-              reported_files_size: reported_files_size ? parseObj(reported_files_size) : BigInt(0),
+              reported_srd_size: reported_srd_size ? BigInt(reported_srd_size as any): BigInt(0),
+              reported_files_size: reported_files_size ? BigInt(reported_files_size as any) : BigInt(0),
               added_files: added_files ? parseObj(added_files) : [],
               deleted_files: deleted_files ? parseObj(deleted_files) : []
           };
