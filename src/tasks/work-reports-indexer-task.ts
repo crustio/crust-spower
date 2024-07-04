@@ -12,8 +12,9 @@ import _ from 'lodash';
 import { Dayjs } from '../utils/datetime';
 import { MaxNoNewBlockDuration } from '../main';
 import Bluebird from 'bluebird';
+import { TaskName } from './polkadot-js-gc-lock';
 
-const KeyLastIndexBlockWrs = 'work-reports-indexer:last-index-block';
+export const KeyLastIndexBlockWrs = 'work-reports-indexer:last-index-block';
 /**
  * main entry funciton for the task
  */
@@ -22,7 +23,7 @@ async function indexWorkReports(
   logger: Logger,
   isStopped: IsStopped
 ) { 
-  const { api, database } = context;
+  const { api, database, gcLock } = context;
   const configOp = createConfigOps(database);
   const workReportsOp = createWorkReportsToProcessOperator(database);
   
@@ -47,6 +48,8 @@ async function indexWorkReports(
     try {
       // Sleep a while for next round
       await Bluebird.delay(1 * 1000);
+
+      await gcLock.acquireTaskLock(TaskName.WorkReportsIndexerTask);
 
       await api.ensureConnection();
       const curBlock: number = api.latestFinalizedBlock();
@@ -80,6 +83,8 @@ async function indexWorkReports(
       }
     } catch (err) {
       logger.error(`💥 Error to index work reports: ${err}`);
+    } finally {
+      await gcLock.releaseTaskLock(TaskName.WorkReportsIndexerTask);
     }
   }
 }

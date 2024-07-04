@@ -13,8 +13,9 @@ import _ from 'lodash';
 import Bluebird from 'bluebird';
 import { REPORT_SLOT, SPOWER_UPDATE_START_OFFSET, WORKREPORT_PROCESSOR_OFFSET } from '../utils/consts';
 import { createConfigOps } from '../db/configs';
+import { TaskName } from './polkadot-js-gc-lock';
 
-const KeyWorkReportsLastProcessBlock = 'work-reports-processor:last-process-block';
+export const KeyWorkReportsLastProcessBlock = 'work-reports-processor:last-process-block';
 /**
  * main entry funciton for the task
  */
@@ -23,7 +24,7 @@ async function processWorkReports(
   logger: Logger,
   isStopped: IsStopped,
 ) {
-  const { api, database, config } = context;
+  const { api, database, config, gcLock } = context;
   const configOp = createConfigOps(database);
   const workReportsOp = createWorkReportsToProcessOperator(database);
 
@@ -42,6 +43,8 @@ async function processWorkReports(
     try {
       // Sleep a while
       await Bluebird.delay(1 * 1000);
+
+      await gcLock.acquireTaskLock(TaskName.WorkReportsProcessorTask);
 
       // Ensure connection and get the lastest finalized block
       await api.ensureConnection();
@@ -62,6 +65,7 @@ async function processWorkReports(
           waitTime = (REPORT_SLOT - blockInSlot + WORKREPORT_PROCESSOR_OFFSET) * 6 * 1000;
         }
 
+        await gcLock.releaseTaskLock(TaskName.WorkReportsProcessorTask);
         await Bluebird.delay(waitTime);
         continue;
       }
@@ -79,6 +83,7 @@ async function processWorkReports(
       const interval = curBlock - lastProcessBlock;
       if ( interval < workReportsProcessorInterval) {
         logger.info(`Not reach interval yet, wait for ${workReportsProcessorInterval-interval} blocks`);
+        await gcLock.releaseTaskLock(TaskName.WorkReportsProcessorTask);
         await Bluebird.delay((workReportsProcessorInterval-interval) * 6 * 1000);
         continue;
       }
@@ -156,8 +161,9 @@ async function processWorkReports(
       }
     } catch (err) {
       logger.error(`Work report processed failed. Error: ${err}`);
+    } finally {
+      await gcLock.releaseTaskLock(TaskName.WorkReportsProcessorTask);
     }
-
   }
 }
 

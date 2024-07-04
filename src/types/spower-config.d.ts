@@ -11,6 +11,7 @@ export interface ChainConfig {
   filesV2IndexChangedSyncInterval: number;
   spowerReadyPeriod: number;
   spowerCalculateBatchSize: number;
+  spowerServiceEffectiveBlock: number;
 }
 
 export interface TelemetryConfig {

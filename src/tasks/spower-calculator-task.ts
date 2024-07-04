@@ -16,8 +16,9 @@ import { convertBlockNumberToReportSlot } from '../utils';
 import { ConfigOperator, FilesV2Operator, FilesV2Record } from '../types/database';
 import { REPORT_SLOT, SPOWER_UPDATE_END_OFFSET, SPOWER_UPDATE_START_OFFSET } from '../utils/consts';
 import { Sequelize } from 'sequelize';
+import { TaskName } from './polkadot-js-gc-lock';
 
-const KeyLastSpowerUpdateBlock = 'spower-calculator-task:last-spower-update-block';
+export const KeyLastSpowerUpdateBlock = 'spower-calculator-task:last-spower-update-block';
 const KeyUpdatingRecords = 'spower-calculator-task:updating-records';
 
 interface UpdatingRecords {
@@ -33,7 +34,7 @@ async function calculateSpower(
   logger: Logger,
   isStopped: IsStopped,
 ) {
-  const { api, database, config } = context;
+  const { api, database, config, gcLock } = context;
   const filesV2Op = createFilesV2Operator(database);
   const configOp = createConfigOps(database);
   const spowerReadyPeriod = config.chain.spowerReadyPeriod;
@@ -45,6 +46,8 @@ async function calculateSpower(
     try {
       // Sleep a while
       await Bluebird.delay(1 * 1000);
+
+      await gcLock.acquireTaskLock(TaskName.SpowerCalculatorTask);
 
       // Ensure connection and get the lastest finalized block
       await api.ensureConnection();
@@ -66,6 +69,7 @@ async function calculateSpower(
           round = 0;
         }
 
+        await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
         await Bluebird.delay(waitTime);
         continue;
       }
@@ -81,6 +85,7 @@ async function calculateSpower(
         || lastFilesV2SyncSlot < curBlockSlot
         || (lastFilesV2IndexBlock % REPORT_SLOT) < SPOWER_UPDATE_START_OFFSET) {
         logger.info(`files-v2-indexer is still catching up the progress, wait a while`);
+        await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
         await Bluebird.delay(6 * 1000);
         continue;
       }
@@ -128,6 +133,7 @@ async function calculateSpower(
       if (filesToCalcRecords.length == 0) {
         logger.info(`No more files to calculate spower, wait for new report slot`);
         const waitTime = (REPORT_SLOT - blockInSlot + SPOWER_UPDATE_START_OFFSET) * 6 * 1000;
+        await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
         await Bluebird.delay(waitTime);
         continue;
       }
@@ -222,6 +228,7 @@ async function calculateSpower(
 
           // Update the file's new spower
           fileInfoV2.spower = newSpower;
+          record.spower = newSpower;
         }
 
         if (!record.is_closed) {
@@ -268,7 +275,7 @@ async function calculateSpower(
 
       // 4.1 Mark the record is updating and save them to update records, which are used to restore the records 
       //     when on chain update spower is success but client treat as failed (due to like network interuption, or client be killed or crashed)
-      logger.debug(`Save the to-restore data to config table`);
+      logger.info(`Save the to-restore data to config table`);
       const updatingRecords: UpdatingRecords = {
         toDeleteCids: toDeleteCids,
         toUpdateRecords: toUpdateRecords
@@ -277,14 +284,14 @@ async function calculateSpower(
       await filesV2Op.setIsSpowerUpdating(allCids);
 
       // 4.2 Perform the update
-      logger.debug(`Call swork.update_spower: changed sworkers count - ${sworkerChangedSpowerMap.size}, changed files count - ${filesChangedMap.size}`);
+      logger.info(`Call swork.update_spower: changed sworkers count - ${sworkerChangedSpowerMap.size}, changed files count - ${filesChangedMap.size}`);
       const result = await api.updateSpower(sworkerChangedSpowerMap, filesChangedMap);
 
       // 5. Update db status
       if (result === true) {
         // 5.1 Get last spower update block from chain
         const newLastSpowerUpdateBlock = await api.getLastSpowerUpdateBlock();
-        logger.debug(`Call swork.update_spower success, newLastSpowerUpdateBlock: ${newLastSpowerUpdateBlock}`);
+        logger.info(`Call swork.update_spower success, newLastSpowerUpdateBlock: ${newLastSpowerUpdateBlock}`);
 
         // 5.2 Update multiple DB records in single transaction
         await updateDB(toDeleteCids, toUpdateRecords, newLastSpowerUpdateBlock, database, logger, filesV2Op, configOp);
@@ -293,6 +300,8 @@ async function calculateSpower(
       }
     } catch (err) {
       logger.error(`💥 Error to calculate spower: ${err}`);
+    } finally {
+      await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
     }
   };
 }
@@ -334,19 +343,19 @@ async function updateDB(toDeleteCids: string[], toUpdateRecords: FilesV2Record[]
 
     // Delete is_closed records
     if (toDeleteCids.length > 0) {
-      logger.debug(`Delete ${toDeleteCids.length} records from files-v2 table`);
+      logger.info(`Delete ${toDeleteCids.length} records from files-v2 table`);
       await filesV2Op.deleteRecords(toDeleteCids, transaction);
     }
 
     // Update existing record data, which contains the updated file_info
     if (toUpdateRecords.length > 0) {
-      logger.debug(`Update ${toUpdateRecords.length} records in files-v2 table`);
+      logger.info(`Update ${toUpdateRecords.length} records in files-v2 table`);
       for (const record of toUpdateRecords) {
         record.last_spower_update_block = lastSpowerUpdateBlock;
         record.last_spower_update_time = new Date();
         record.is_spower_updating = false;
       }
-      const updateFields = ['file_info', 'last_spower_update_block', 'last_spower_update_time', 'next_spower_update_block', 'is_spower_updating'];
+      const updateFields = ['spower', 'file_info', 'last_spower_update_block', 'last_spower_update_time', 'next_spower_update_block', 'is_spower_updating'];
       await filesV2Op.updateRecords(toUpdateRecords, updateFields, transaction);
     }
 

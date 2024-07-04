@@ -15,6 +15,7 @@ const chainConfigSchema = Joi.object().keys({
   filesV2IndexChangedSyncInterval: Joi.number().required(),
   spowerReadyPeriod: Joi.number().required(),
   spowerCalculateBatchSize: Joi.number().required(),
+  spowerServiceEffectiveBlock: Joi.number().required(),
 });
 
 const databaseConfigSchema = Joi.object().keys({

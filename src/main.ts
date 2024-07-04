@@ -12,6 +12,7 @@ import { logger } from './utils/logger';
 import { timeout, timeoutOrError } from './utils/promise-utils';
 import { sleep } from './utils';
 import CrustSpowerHttpServer from './http';
+import PolkadotJsGCLock from './tasks/polkadot-js-gc-lock';
 
 const ConfigFile = process.env['SPOWER_CONFIG'] || 'spower-config.json';
 export const MaxNoNewBlockDuration = Dayjs.duration({
@@ -35,6 +36,7 @@ async function main() {
     config,
     database,
     startTime: Dayjs(),
+    gcLock: new PolkadotJsGCLock(),
   };
   const simpleTasks = await loadSimpleTasks(context);
   try {

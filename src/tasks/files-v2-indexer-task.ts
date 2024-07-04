@@ -14,6 +14,7 @@ import Bluebird from 'bluebird';
 import { createFilesV2Operator } from '../db/files-v2';
 import { MarketFilesV2StorageKey } from '../utils/consts';
 import { cidFromStorageKey, stringifyEx } from '../utils';
+import { TaskName } from './polkadot-js-gc-lock';
 
 enum IndexMode {
   IndexAll = 'index-all',
@@ -25,6 +26,7 @@ const KeyIndexAllAtBlock = 'files-v2-indexer:index-all-at-block';
 const KeyIndexAllLastIndexKey = 'files-v2-indexer:index-all-last-index-key';
 export const KeyIndexChangedLastIndexBlock = 'files-v2-indexer:index-changed-last-index-block';
 export const KeyIndexChangedLastSyncBlock = 'files-v2-indexer:index-changed-last-sync-block'
+const FileDuration = 180 * 24 * 600 ; // 6 Months - 180 Days
 
 /**
  * main entry funciton for the task
@@ -65,7 +67,7 @@ async function indexAll(
   logger: Logger,
   isStopped: IsStopped
 ) {
-  const { api, database, config } = context;
+  const { api, database, config, gcLock } = context;
   const configOp = createConfigOps(database);
   
   // Get index block from config
@@ -102,6 +104,9 @@ async function indexAll(
     try {
         // Wait a while
         await Bluebird.delay(500);
+
+        await gcLock.acquireTaskLock(TaskName.FilesV2IndexerTask);
+
         round++;
 
         await api.ensureConnection();
@@ -148,6 +153,8 @@ async function indexAll(
 
     } catch (err) {
         logger.error(`💥 Error to index all market.FilesV2 data: ${err}`);
+    } finally {
+      await gcLock.releaseTaskLock(TaskName.FilesV2IndexerTask);
     }
   }
 }
@@ -157,7 +164,7 @@ async function indexChanged(
   logger: Logger,
   isStopped: IsStopped
 ) {
-    const { api, database, config } = context;
+    const { api, database, config, gcLock } = context;
     const filesV2Op = createFilesV2Operator(database);
     const configOp = createConfigOps(database);
     const filesV2SyncBatchSize = config.chain.filesV2SyncBatchSize;
@@ -176,6 +183,8 @@ async function indexChanged(
         try {
             // Sleep a while for next round
             await Bluebird.delay(1 * 1000);
+
+            await gcLock.acquireTaskLock(TaskName.FilesV2IndexerTask);
 
             await api.ensureConnection();
             const curBlock = api.latestFinalizedBlock();
@@ -245,13 +254,17 @@ async function indexChanged(
             }
         } catch (err) {
             logger.error(`💥 Error to index updated files: ${err}`);
-        } 
+        } finally {
+          await gcLock.releaseTaskLock(TaskName.FilesV2IndexerTask);
+        }
     }
 }
 
 async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number, context: AppContext, logger: Logger): Promise<string[]> {
     const { api, database, config } = context;
     const filesV2Op = createFilesV2Operator(database);
+    const spowerServiceEffectiveBlock = config.chain.spowerServiceEffectiveBlock;
+    const spowerReadyPeriod = config.chain.spowerReadyPeriod;
 
     if (!_.isEmpty(cids)) {
         // Get the detailed FileInfoV2 data from chain for the cids array
@@ -261,10 +274,12 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
         // Construct the batch toUpsertRecords
         const toUpsertRecords = [];
         for (const [cid, fileInfo] of fileInfoV2Map) {
-          // Calculate the next_spower_update_block for non-expired files
+          // Calculate the next_spower_update_block for files which are non-expired, and created/refreshed after spowerServiceEffectiveBlock
           // The next_spower_update_block is the minimum create_at block + SpowerDelayPeriod
           let nextSpowerUpdateBlock = null;
-          if (!_.isNil(fileInfo) && !_.isEmpty(fileInfo.replicas) && fileInfo.expired_at > curBlock) {
+          if (!_.isNil(fileInfo) && !_.isEmpty(fileInfo.replicas) 
+              && fileInfo.expired_at > curBlock
+              && (fileInfo.expired_at - FileDuration) > spowerServiceEffectiveBlock) {
             let minimumCreateAtBlock: number = Number.MAX_VALUE;
             for (const [_owner,replica] of fileInfo.replicas) {
               let createdAt = replica.created_at as any;
@@ -281,12 +296,20 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
             if (minimumCreateAtBlock == 0) {
               nextSpowerUpdateBlock = curBlock;
             } else {
-              nextSpowerUpdateBlock = minimumCreateAtBlock + config.chain.spowerReadyPeriod as number;
+              nextSpowerUpdateBlock = minimumCreateAtBlock + spowerReadyPeriod as number;
             }
           }
 
           toUpsertRecords.push({
             cid,
+            file_size: fileInfo.file_size,
+            spower: fileInfo.spower,
+            expired_at: fileInfo.expired_at,
+            calculated_at: fileInfo.calculated_at,
+            amount: fileInfo.amount,
+            prepaid: fileInfo.prepaid,
+            reported_replica_count: fileInfo.reported_replica_count,
+            remaining_paid_count: fileInfo.remaining_paid_count,
             file_info: stringifyEx(fileInfo),
             last_sync_block: atBlock,
             last_sync_time: new Date(),
@@ -298,7 +321,8 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
 
         // Upsert to files_v2 table
         const existCids = await filesV2Op.getExistingCids(cids);
-        const upsertFields = ['file_info', 'last_sync_block', 'last_sync_time', 'need_sync', 'is_closed', 'next_spower_update_block']
+        const upsertFields = ['file_size', 'spower', 'expired_at', 'calculated_at', 'amount', 'prepaid', 'reported_replica_count', 'remaining_paid_count',
+                              'file_info', 'last_sync_block', 'last_sync_time', 'need_sync', 'is_closed', 'next_spower_update_block']
         const affectedRows = await filesV2Op.upsertRecords(toUpsertRecords, upsertFields);
         
         logger.info(`Upsert ${fileInfoV2Map.size} files at block '${atBlock}' to files_v2 table: New - ${affectedRows - existCids.length}, Update: ${existCids.length}`);
