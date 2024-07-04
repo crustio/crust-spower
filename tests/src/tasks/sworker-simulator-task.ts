@@ -238,24 +238,23 @@ async function registerSworkerAndJoinGroup(context: AppContext, sworkerAccount: 
 
     await api.sworkerRegister(sworkerAccount, SWORKER_CODE, sworkerKey);
 
-    const curBlock = api.latestFinalizedBlock();
-    const reportSlot = Math.floor(curBlock/REPORT_SLOT) * REPORT_SLOT;
-    const slotHash = await api.getBlockHash(reportSlot);
-    const workReport = {
-        curr_pk: sworkerKey,
-        ab_upgrade_pk: '0x',
-        slot: reportSlot,
-        slot_hash: slotHash.toString(),
-        reported_srd_size: BigInt(1_000_000_000_000),
-        reported_files_size: BigInt(0),
-        added_files: [],
-        deleted_files: [],
-        reported_srd_root: '0x',
-        reported_files_root: '0x',
-        sig: '0x',
-    };
-
     while(true) {
+        const curBlock = api.latestFinalizedBlock();
+        const reportSlot = Math.floor(curBlock/REPORT_SLOT) * REPORT_SLOT;
+        const slotHash = await api.getBlockHash(reportSlot);
+        const workReport = {
+            curr_pk: sworkerKey,
+            ab_upgrade_pk: '0x',
+            slot: reportSlot,
+            slot_hash: slotHash.toString(),
+            reported_srd_size: BigInt(1_000_000_000_000),
+            reported_files_size: BigInt(0),
+            added_files: [],
+            deleted_files: [],
+            reported_srd_root: '0x',
+            reported_files_root: '0x',
+            sig: '0x',
+        };
         // report empty work report to registration
         const result = await api.sworkerReportWorks(sworkerAccount, workReport);
         if (result) {
