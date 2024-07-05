@@ -6,6 +6,7 @@ export interface ChainConfig {
   workReportsProcessorInterval: number;
   workReportsProcesserBatchSize: number;
   workReportsProcesserFilesCountLimit: number;
+  filesV2DefaultIndexMode: string;
   filesV2SyncBatchSize: number;
   filesV2IndexAllKeyBatchSize: number;
   filesV2IndexChangedSyncInterval: number;

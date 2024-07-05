@@ -10,6 +10,7 @@ const chainConfigSchema = Joi.object().keys({
   workReportsProcessorInterval: Joi.number().required(),
   workReportsProcesserBatchSize: Joi.number().required(),
   workReportsProcesserFilesCountLimit: Joi.number().required(),
+  filesV2DefaultIndexMode: Joi.string().required(),
   filesV2SyncBatchSize: Joi.number().required(),
   filesV2IndexAllKeyBatchSize: Joi.number().required(),
   filesV2IndexChangedSyncInterval: Joi.number().required(),

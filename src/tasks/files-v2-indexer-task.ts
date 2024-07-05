@@ -19,11 +19,14 @@ import { TaskName } from './polkadot-js-gc-lock';
 enum IndexMode {
   IndexAll = 'index-all',
   IndexChanged = 'index-changed',
+  indexFromGenesis = 'index-from-genesis'
 }
 
 const KeyIndexMode = 'files-v2-indexer:index-mode';
 const KeyIndexAllAtBlock = 'files-v2-indexer:index-all-at-block';
 const KeyIndexAllLastIndexKey = 'files-v2-indexer:index-all-last-index-key';
+const KeyIndexFromGenesisTargetBlock = 'files-v2-indexer:index-from-genesis-target-block';
+const KeyIndexFromGenesisLastIndexBlock = 'files-v2-indexer:index-from-genesis-last-index-block';
 export const KeyIndexChangedLastIndexBlock = 'files-v2-indexer:index-changed-last-index-block';
 export const KeyIndexChangedLastSyncBlock = 'files-v2-indexer:index-changed-last-sync-block'
 const FileDuration = 180 * 24 * 600 ; // 6 Months - 180 Days
@@ -37,7 +40,7 @@ async function indexFilesV2(
   isStopped: IsStopped
 ) {
  
-  const { database } = context;
+  const { database, config } = context;
   const configOp = createConfigOps(database);
 
   while (!isStopped()) {
@@ -46,13 +49,15 @@ async function indexFilesV2(
 
         let indexMode = await configOp.readString(KeyIndexMode) as IndexMode;
         if (_.isNil(indexMode) || _.isEmpty(indexMode)) {
-          logger.info(`No '${KeyIndexMode}' config found in DB, this is the first run, set index mode to 'index-all'`);
-          indexMode = IndexMode.IndexAll;
+          logger.info(`No '${KeyIndexMode}' config found in DB, this is the first run, set default index mode`);
+          indexMode = config.chain.filesV2DefaultIndexMode as IndexMode;
           configOp.saveString(KeyIndexMode, indexMode);
         }
 
         if (indexMode == IndexMode.IndexAll) {
           await indexAll(context, logger, isStopped);
+        } if (indexMode == IndexMode.indexFromGenesis) {
+          await indexFromGenesis(context, logger, isStopped);
         } else {
           await indexChanged(context, logger, isStopped);
         }
@@ -60,6 +65,126 @@ async function indexFilesV2(
         logger.error(`💥 Error to index FilesV2 data: ${err}`);
     }
   }
+}
+
+async function indexFromGenesis(
+  context: AppContext,
+  logger: Logger,
+  isStopped: IsStopped
+) {
+  const { api, database, config, gcLock } = context;
+  const configOp = createConfigOps(database);
+  const filesV2SyncBatchSize = config.chain.filesV2SyncBatchSize;
+
+  // Get the target block from config
+  let targetBlock = await configOp.readInt(KeyIndexFromGenesisTargetBlock);
+  if (_.isNil(targetBlock) || targetBlock === 0) {
+    logger.info(`No '${KeyIndexFromGenesisTargetBlock}' config found in DB, this is the first run, get the value from chain.`);
+
+    // Get the swork.LastSpowerUpdateBlock as the indexAtBlock
+   // targetBlock = await api.getLastSpowerUpdateBlock() as number;
+   targetBlock = null;
+    if (_.isNil(targetBlock) || targetBlock === 0) {
+      logger.info(`swork.LastSpowerUpdateBlock is not set on chain yet, use the current latest block as the index block.`);
+      targetBlock = api.latestFinalizedBlock();
+    }
+
+    // Save the retrieved value to DB
+    configOp.saveInt(KeyIndexFromGenesisTargetBlock, targetBlock);
+  }
+  logger.info(`Index from genesis target block '${targetBlock}'`);
+
+  // Get the last index block from config
+  let lastIndexBlock = await configOp.readInt(KeyIndexFromGenesisLastIndexBlock);
+  if (_.isNil(lastIndexBlock) || _.isEmpty(lastIndexBlock)) {
+    logger.info('Last index block is empty, index from genesis block');
+    lastIndexBlock = 0;
+    configOp.saveInt(KeyIndexFromGenesisLastIndexBlock, lastIndexBlock);
+  } else {
+    logger.info(`Last index block is '${lastIndexBlock}'`);
+  }
+
+  let round = 0;
+  let totalFiles = 0;
+  while (!isStopped()) {
+    try {
+        // Wait a while
+        await Bluebird.delay(500);
+
+        await gcLock.acquireTaskLock(TaskName.FilesV2IndexerTask);
+
+        round++;
+
+        await api.ensureConnection();
+        const curBlock = api.latestFinalizedBlock();
+        
+        const cids_set = new Set<string>();
+        // Generate 100 'threads' to index 100 segaments of blocks to accelerate the indexing speed
+        // Each 'thread' index 100 blocks, so 100*100=10000 blocks for each batch
+        const taskPromises = [];
+        let lastEndBlock = lastIndexBlock;
+        for (let i = 0; i < 100; i++) {
+          if (lastEndBlock == targetBlock)
+            break;
+
+          taskPromises.push(new Promise(async (resolve) => {
+            const startBlock = lastEndBlock + 1;
+            let endBlock = startBlock + 99;
+            if (endBlock > targetBlock) {
+              endBlock = targetBlock;
+            }
+            lastEndBlock = endBlock;
+            logger.info(`[Thread-${i}] Start to index from ${startBlock} to ${endBlock}`);
+            for (let block = startBlock; block <= endBlock; block++) {
+              const [new_cids, closed_cids] = await api.getNewAndClosedFiles(block);
+
+              new_cids.forEach(cid => cids_set.add(cid));
+              closed_cids.forEach(cid => cids_set.delete(cid));
+            }
+            logger.info(`[Thread-${i}] Index complete from ${startBlock} to ${endBlock}`);
+            resolve(true);
+          }));
+        }
+
+        if (taskPromises.length == 0) {
+          logger.info(`Index from genesis is done! Target block: ${targetBlock}, Last Index Block: ${lastIndexBlock}`);
+
+          // Set the index mode to IndexChanged and set the indexAtBlock as the index-changed-last-index-block
+          await configOp.saveString(KeyIndexMode, IndexMode.IndexChanged);
+          await configOp.saveInt(KeyIndexFromGenesisLastIndexBlock, lastIndexBlock);
+
+          break;
+        }
+
+        logger.info(`Round ${round} - Start to batch indexing from ${lastIndexBlock} to ${lastEndBlock}...`);
+        await Promise.all(taskPromises);
+        logger.info(`All indexing threads complete from ${lastIndexBlock} to ${lastEndBlock}`);
+
+        logger.info(`Round ${round} - Got ${cids_set.size} cids to process`);
+        totalFiles += cids_set.size;
+        logger.info(`💸💸💸 Total files: ${totalFiles}`);
+        if (cids_set.size > 0) {
+          // Sync the FilesV2 data from chain
+          const cids = [...cids_set];
+          for (let i = 0; i < cids.length; i += filesV2SyncBatchSize) {
+            const cidsInBatch = cids.slice(i, i + filesV2SyncBatchSize);
+            logger.info(`Batch ${i+1}: ${cidsInBatch.length} files`);
+            
+            await syncFilesV2Data(cidsInBatch, targetBlock, curBlock, context, logger);
+          }
+        }
+
+        // Save the last indexed block
+        lastIndexBlock = lastEndBlock;
+        configOp.saveInt(KeyIndexFromGenesisLastIndexBlock, lastIndexBlock);
+    } catch (err) {
+        logger.error(`💥 Error to index all market.FilesV2 data: ${err}`);
+    } finally {
+      await gcLock.releaseTaskLock(TaskName.FilesV2IndexerTask);
+    }
+  }
+
+  logger.info(`💸💸💸💸💸💸 All Total files: ${totalFiles}`);
 }
 
 async function indexAll(
@@ -136,7 +261,6 @@ async function indexAll(
             logger.info('No pending cids to index from db, mark indexing as done');
 
             // Set the index mode to IndexChanged and set the indexAtBlock as the index-changed-last-index-block
-            await configOp.saveString(KeyIndexAllLastIndexKey, '');
             await configOp.saveString(KeyIndexMode, IndexMode.IndexChanged);
             await configOp.saveInt(KeyIndexChangedLastIndexBlock, indexAtBlock);
             

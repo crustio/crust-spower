@@ -422,6 +422,39 @@ export default class CrustApi {
     return cids;
   }
   
+  async getNewAndClosedFiles(atBlock: number): Promise<[string[], string[]]> {
+    //const startTime = performance.now();
+    await this.withApiReady();
+    const new_cids = [];
+    const closed_cids = [];
+    try {
+      const hash = await this.getBlockHash(atBlock);
+      const events: EventRecord[] = await this.api.query.system.events.at(hash);
+
+      for (const {event: { data, method }} of events) {
+        if (method === 'FileSuccess') {
+          if (data.length < 2) continue; // data should be like [AccountId, MerkleRoot]
+
+          // Get data from the event body
+          const cid = hexToString(data[1].toString());
+          new_cids.push(cid);
+        } else if (method === 'IllegalFileClosed' || method === 'FileClosed') {
+          if (data.length !== 1) continue; // data should be like [MerkleRoot]
+          // Get data from the event body
+          const cid = hexToString(data[0].toString());
+          closed_cids.push(cid);
+        }
+      }
+    } catch (err) {
+      logger.error(`💥 Error to get closed files from chain: ${err}`);
+      throw err;
+    } finally {
+      //const endTime = performance.now();
+      //logger.debug(`End to get ${new_cids.length} new files and ${closed_cids.length} closed files from chain at block '${atBlock}'. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+    }
+
+    return [new_cids, closed_cids];
+  }
 
   async getFilesInfoV2(cids: string[], atBlock: number): Promise<Map<string, FileInfoV2>> {
 

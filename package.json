@@ -1,6 +1,6 @@
 {
   "name": "crust-spower",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Crust SPower Service to calculate the meaningful files storage power offchain",
   "main": "build/src/main.js",
   "repository": "https://github.com/crustio/crust-spower.git",
