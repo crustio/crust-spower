@@ -9,4 +9,5 @@ export interface AppContext {
   api: CrustApi;
   database: Sequelize;
   gcLock: PolkadotJsGCLock;
+  isStopped: boolean;
 }

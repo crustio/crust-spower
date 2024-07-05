@@ -13,8 +13,10 @@ import { MaxNoNewBlockDuration } from '../main';
 import Bluebird from 'bluebird';
 import { createFilesV2Operator } from '../db/files-v2';
 import { MarketFilesV2StorageKey } from '../utils/consts';
-import { cidFromStorageKey, stringifyEx } from '../utils';
+import { cidFromStorageKey, sleep, stringifyEx } from '../utils';
 import { TaskName } from './polkadot-js-gc-lock';
+import { createChildLogger } from '../utils/logger';
+import { FilesToIndexQueueRecord, FilesV2Record } from '../types/database';
 
 enum IndexMode {
   IndexAll = 'index-all',
@@ -30,6 +32,7 @@ const KeyIndexFromGenesisLastIndexBlock = 'files-v2-indexer:index-from-genesis-l
 export const KeyIndexChangedLastIndexBlock = 'files-v2-indexer:index-changed-last-index-block';
 export const KeyIndexChangedLastSyncBlock = 'files-v2-indexer:index-changed-last-sync-block'
 const FileDuration = 180 * 24 * 600 ; // 6 Months - 180 Days
+let isManualFilesV2IndexerRunning = false;
 
 /**
  * main entry funciton for the task
@@ -82,8 +85,7 @@ async function indexFromGenesis(
     logger.info(`No '${KeyIndexFromGenesisTargetBlock}' config found in DB, this is the first run, get the value from chain.`);
 
     // Get the swork.LastSpowerUpdateBlock as the indexAtBlock
-   // targetBlock = await api.getLastSpowerUpdateBlock() as number;
-   targetBlock = null;
+    targetBlock = await api.getLastSpowerUpdateBlock() as number;
     if (_.isNil(targetBlock) || targetBlock === 0) {
       logger.info(`swork.LastSpowerUpdateBlock is not set on chain yet, use the current latest block as the index block.`);
       targetBlock = api.latestFinalizedBlock();
@@ -456,6 +458,138 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
     }
 
     return [];
+}
+
+// This function is invoked from the /api/v1/files_queue/process endpoint
+export function triggerManualFilesIndexer(context: AppContext): { code: string, msg: string } {
+
+  if (isManualFilesV2IndexerRunning) {
+    return {
+      code: 'ERROR',
+      msg: 'manual-files-v2-indexer is already running, can not trigger multiple times'
+    };
+  } else {
+    // DO NOT 'await' here, we just let it run asynchronouslly
+    processFilesToIndexQueue(context);
+    return {
+      code: 'OK',
+      msg: 'Trigger to run manual-files-v2-indexer successfully',
+    }
+  }
+}
+
+export async function processFilesToIndexQueue(context: AppContext): Promise<void> {
+  const logger = createChildLogger({ moduleId: 'manual-files-v2-indexer' });
+  const { database } = context;
+  const batchSize = 1000;
+  const maxNeedSyncRecords = 5000;
+  let errorCount = 0;
+  let round = 0;
+
+  // Set the flag first
+  if (isManualFilesV2IndexerRunning) {
+    logger.warn('Another manual-files-v2-indexer is already running, can not run multiple indexers at the same time, exit out...');
+    return;
+  }
+  isManualFilesV2IndexerRunning = true;
+  logger.info('Start to run manual-files-v2-indexer...');
+
+  // Start the processing loop
+  while(!context.isStopped) {
+    try {
+      // Sleep a while to release the cpu
+      await sleep(1000);
+
+      // Keep waiting when there're too much need_sync records in files_v2 table
+      const needSyncCount = await FilesV2Record.count({
+        where: {
+          need_sync: true,
+        },
+      });
+      if (needSyncCount > maxNeedSyncRecords) {
+        logger.info(`There're ${needSyncCount} need_sync records in files_v2 table which exceeds the limit, wait a while...`);
+        await sleep(60*1000); // Wait for 1 minutes
+        continue;
+      }
+      
+      // Read new files from the files_to_index_queue table
+      const toIndexRecords = await FilesToIndexQueueRecord.findAll({
+        attributes: ['cid'],
+        where: {
+          status: 'new',
+        },
+        limit: batchSize
+      });
+      const cids = toIndexRecords.map((r: any) => r.cid);
+      if (toIndexRecords.length === 0) {
+        logger.info(`No more new files from files_to_index_queue table, exit out the manual-files-v2-indexer`);
+        break;
+      }
+      round++;
+      logger.info(`Round ${round} - Get ${cids.length} new files from the files_to_index_queue table`);
+
+      // Only insert the files not in the files_v2 table
+      const existRecords = await FilesV2Record.findAll({
+        attributes: ['cid'],
+        where: {
+          cid: cids,
+        },
+      });
+      const existCids = existRecords.map((r: any) => r.cid);
+      const existCidsSet = new Set(existCids);
+      const toInsertCids = cids.filter((cid: string) => !existCidsSet.has(cid));
+      logger.info(`Round ${round} - ${existCids.length} files exist, ${toInsertCids.length} files to insert`);
+
+      const toInsertRecords = [];
+      for (const cid of toInsertCids) {
+        toInsertRecords.push({
+          cid,
+          need_sync: true
+        });
+      }
+      
+      // Insert files_v2 records and update files_to_index_queue status in a transaction
+      await database.transaction(async (transaction) => {
+        // Bulk insert the need_sync records to the files_v2 table, but ignore on any duplicates
+        // Although we have already filtered out existing cids, there is a chance that the index-change indexer 
+        // just index some additional cids in this time frame
+        const insertResult = await FilesV2Record.bulkCreate(toInsertRecords, {
+          ignoreDuplicates: true,
+          transaction
+        });
+        logger.info(`Round ${round} - Successfully insert ${insertResult.length} need_sync records to files_v2 table`);
+
+        await FilesToIndexQueueRecord.update({
+          status: 'exist'
+        }, {
+          where: { cid: existCids },
+          transaction
+        });
+
+        await FilesToIndexQueueRecord.update({
+          status: 'processed'
+        }, {
+          where: { cid: toInsertCids },
+          transaction
+        });
+      });
+
+      // Successful process for this round, reset the errorCount
+      errorCount = 0;
+    } catch(err) {
+      logger.error(`💥 Error to manual index from files_to_index_queue: ${err}`);
+
+      errorCount++;
+      if (errorCount >= 5) {
+        logger.error('Reach the consecutive error count limit, exit out the manual-files-v2-indexer');
+        break;
+      }
+    }
+  }
+
+  // Processing done, reset the flag
+  isManualFilesV2IndexerRunning = false;
+  logger.info('End to run manual-files-v2-indexer');
 }
 
 export async function createFilesV2Indexer(

@@ -4,7 +4,7 @@ import { createChildLogger } from '../utils/logger';
 import { FilesV2Record, WorkReportsToProcessRecord } from '../types/database';
 import { createConfigOps } from '../db/configs';
 import { KeyWorkReportsLastProcessBlock } from '../tasks/work-reports-processor-task';
-import { KeyIndexChangedLastSyncBlock } from '../tasks/files-v2-indexer-task';
+import { KeyIndexChangedLastSyncBlock, triggerManualFilesIndexer } from '../tasks/files-v2-indexer-task';
 import { KeyLastSpowerUpdateBlock } from '../tasks/spower-calculator-task';
 import { KeyLastIndexBlockWrs } from '../tasks/work-reports-indexer-task';
 
@@ -65,11 +65,23 @@ export async function stats(_req: Request, res: Response, context: AppContext): 
     res.json(result);
 
   } catch(err) {
-    logger.error(`Error in /metrics/stats: ${err}`);
-    res.json({
+    logger.error(`Error in stats: ${err}`);
+    res.status(400).json({
         code: 'Error',
         msg: `${err}`,
         data: ''
       });
+  }
+}
+
+export async function processFilesToIndexQueue(_req: Request, res: Response, context: AppContext): Promise<void> {
+  
+  // Just trigger the process and then return directly
+  const result = triggerManualFilesIndexer(context);
+  
+  if (result.code === 'OK') {
+    res.json(result);
+  } else {
+    res.status(400).json(result);
   }
 }

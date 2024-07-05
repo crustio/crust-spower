@@ -228,3 +228,36 @@ export interface FilesV2Operator {
   setIsSpowerUpdating: (cids: string[]) => Promise<number>;
   clearIsSpowerUpdating: () => Promise<number>;
 };
+
+/// ------------------------------------------------
+/// files_to_index_queue table
+export class FilesToIndexQueueRecord extends Model<InferAttributes<FilesToIndexQueueRecord>, InferCreationAttributes<FilesToIndexQueueRecord>> {
+  declare cid: string;
+  declare status: string;
+  declare last_updated: CreationOptional<Date>;
+  declare create_at: CreationOptional<Date>;
+  static initModel(sequelize: Sequelize) {
+    FilesToIndexQueueRecord.init({
+    cid: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      primaryKey: true,
+    },
+    status: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    last_updated: {
+        type: DataTypes.DATE(3),
+        allowNull: false,
+    },
+    create_at: {
+        type: DataTypes.DATE(3),
+        allowNull: false,
+    },
+  }, {
+    sequelize,
+    tableName: 'files_to_index_queue'
+  });
+  }
+};

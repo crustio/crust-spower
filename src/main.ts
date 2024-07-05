@@ -37,6 +37,7 @@ async function main() {
     database,
     startTime: Dayjs(),
     gcLock: new PolkadotJsGCLock(),
+    isStopped: false
   };
   const simpleTasks = await loadSimpleTasks(context);
   try {
@@ -64,6 +65,7 @@ async function main() {
     throw e;
   } finally {
     logger.info('stopping simple tasks');
+    context.isStopped = true;
     await timeout(
       Bluebird.map(simpleTasks, (t) => t.stop()),
       5 * 1000,
