@@ -3,16 +3,16 @@
     "endPoint": "ws://localhost:9944",
     "placeOrderAccountsNumber": 2,
     "placeOrderFrequency": 1,
-    "placeOrderLimit": 1000,
-    "groupAccountsNumber": 20,
-    "sworkerAccountsNumber": 40
+    "placeOrderLimit": 10000,
+    "groupAccountsNumber": 70,
+    "sworkerAccountsNumber": 90
   },
   "database": {
     "dialect": "mysql",
     "host": "localhost",
     "port": 3306,
     "username": "root",
-    "password": "123456",
+    "password": "1234567",
     "database": "crust_spower_test"
   }
 }
