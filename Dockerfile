@@ -15,7 +15,7 @@ ENV PATH $VOLTA_HOME/bin:$PATH
 
 RUN curl https://get.volta.sh | bash
 
-RUN volta install node@14.16.1
+RUN volta install node@16.20.2
 
 COPY ./ /opt/crust-spower/
 WORKDIR /opt/crust-spower

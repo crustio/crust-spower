@@ -75,6 +75,6 @@
   },
   "license": "Apache-2.0",
   "volta": {
-    "node": "14.16.1"
+    "node": "16.20.2"
   }
 }
