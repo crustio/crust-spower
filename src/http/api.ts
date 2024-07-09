@@ -76,7 +76,7 @@ export async function stats(_req: Request, res: Response, context: AppContext): 
     });
 
     const version = process.env.npm_package_version || 'unknown';
-    const uptime = Dayjs.duration(Dayjs().diff(context.startTime)).asHours();
+    const uptime = Dayjs.duration(Dayjs().diff(context.startTime)).asHours().toFixed(2);
 
     const result = {
         code: 'OK',
