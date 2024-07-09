@@ -295,6 +295,7 @@ async function indexChanged(
     const configOp = createConfigOps(database);
     const filesV2SyncBatchSize = config.chain.filesV2SyncBatchSize;
     const filesV2IndexChangedSyncInterval = config.chain.filesV2IndexChangedSyncInterval;
+    const filesV2SyncMaxRounds = config.chain.filesV2SyncMaxRounds;
     
     // Get the last index block
     let lastIndexBlock = await configOp.readInt(KeyIndexChangedLastIndexBlock);
@@ -337,7 +338,7 @@ async function indexChanged(
                 const updatedFilesCids = await api.getReplicasUpdatedFiles(block);
                 if (!_.isEmpty(updatedFilesCids)) {
                     const [insertCount, updateCount] = await filesV2Op.upsertNeedSync(updatedFilesCids);
-                    logger.info(`UpsertNeedSync: upsert ${updatedFilesCids.length} files as changed at block '${block}' to files_v2 table: New - ${insertCount}, Update: ${updateCount}`);
+                    logger.info(`UpsertNeedSync: upsert ${updatedFilesCids.length} files as changed at block '${block}' to files_v2 table: New ${insertCount}, Update ${updateCount}`);
                 }
                 
                 // Get closed files from chain at the specific block
@@ -354,14 +355,17 @@ async function indexChanged(
                 // Do the actual FilesV2 data sync every configure interval
                 if (block % filesV2IndexChangedSyncInterval == 0) {
                   logger.info(`Sync FilesV2 data at block '${block}'`);
+                  let syncRounds = 0;
                   do {
                     if (isStopped())
                         return;
 
                     const needSyncCids = await filesV2Op.getNeedSync(filesV2SyncBatchSize);
-                    if (_.isEmpty(needSyncCids))
-                        break;
-
+                    if (_.isEmpty(needSyncCids)) {
+                      logger.info('No more need sync files, continue to next block');
+                      break;
+                    }
+                        
                     const syncedCids = await syncFilesV2Data(needSyncCids, block, curBlock, context, logger);
 
                     // The difference between needSyncCids and syncedCids is the closed files
@@ -372,6 +376,15 @@ async function indexChanged(
                     if (!_.isEmpty(closedCids)) {
                       await filesV2Op.setIsClosed(closedCids, curBlock);
                     }
+
+                    syncRounds++;
+                    if (syncRounds >= filesV2SyncMaxRounds) {
+                      logger.info('Reach the max sync rounds limit, break out to release resource for other tasks');
+                      break;
+                    }
+
+                    // Sleep a while to release some CPU
+                    await Bluebird.delay(500);
                   }while(true);
 
                   // Update the last sync block
@@ -395,7 +408,7 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
     if (!_.isEmpty(cids)) {
         // Get the detailed FileInfoV2 data from chain for the cids array
         const fileInfoV2Map = await api.getFilesInfoV2(cids, atBlock);
-        logger.debug(`Get ${fileInfoV2Map.size} FileInfoV2 data from chain at block '${atBlock}'`);
+        logger.info(`Get ${fileInfoV2Map.size} FileInfoV2 data from chain at block '${atBlock}'`);
 
         // Construct the batch toUpsertRecords
         const toUpsertRecords = [];
@@ -446,12 +459,12 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
         }
 
         // Upsert to files_v2 table
-        const existCids = await filesV2Op.getExistingCids(cids);
+        const existCids = await filesV2Op.getExistingCids([...fileInfoV2Map.keys()]);
         const upsertFields = ['file_size', 'spower', 'expired_at', 'calculated_at', 'amount', 'prepaid', 'reported_replica_count', 'remaining_paid_count',
                               'file_info', 'last_sync_block', 'last_sync_time', 'need_sync', 'is_closed', 'next_spower_update_block']
         const affectedRows = await filesV2Op.upsertRecords(toUpsertRecords, upsertFields);
         
-        logger.info(`Upsert ${fileInfoV2Map.size} files at block '${atBlock}' to files_v2 table: New - ${affectedRows - existCids.length}, Update: ${existCids.length}`);
+        logger.info(`Upsert ${fileInfoV2Map.size} files at block '${atBlock}' to files_v2 table: New ${affectedRows - existCids.length}, Update ${existCids.length}`);
 
         // Return the actual synced cids list
         return [...fileInfoV2Map.keys()];

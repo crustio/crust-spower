@@ -9,6 +9,7 @@
     "workReportsProcesserFilesCountLimit":"2000",
     "filesV2DefaultIndexMode": "index-all",
     "filesV2SyncBatchSize":"200",
+    "filesV2SyncMaxRounds": "20",
     "filesV2IndexAllKeyBatchSize": "400",
     "filesV2IndexChangedSyncInterval": "10",
     "spowerReadyPeriod": "10",
