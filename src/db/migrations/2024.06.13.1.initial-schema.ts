@@ -27,7 +27,7 @@ async function createConfigTable(sequelize: QueryInterface) {
         primaryKey: true,
       },
       content: {
-        type: DataTypes.TEXT('medium'),
+        type: DataTypes.TEXT('long'),
         allowNull: true,
       },
       last_updated: {
@@ -174,7 +174,7 @@ async function createFilesV2Table(sequelize: QueryInterface) {
           allowNull: true,
         },
         next_spower_update_block: {
-          type: DataTypes.INTEGER,
+          type: DataTypes.BIGINT,
           allowNull: true,
         },
         is_spower_updating: {
