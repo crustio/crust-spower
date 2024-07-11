@@ -18,6 +18,7 @@ const chainConfigSchema = Joi.object().keys({
   spowerReadyPeriod: Joi.number().required(),
   spowerCalculateBatchSize: Joi.number().required(),
   spowerServiceEffectiveBlock: Joi.number().required(),
+  pinServiceAuthHeader: Joi.string().required(),
 });
 
 const databaseConfigSchema = Joi.object().keys({

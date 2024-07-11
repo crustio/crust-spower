@@ -14,6 +14,7 @@ export interface ChainConfig {
   spowerReadyPeriod: number;
   spowerCalculateBatchSize: number;
   spowerServiceEffectiveBlock: number;
+  pinServiceAuthHeader: string;
 }
 
 export interface TelemetryConfig {

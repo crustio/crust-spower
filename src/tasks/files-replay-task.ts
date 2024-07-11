@@ -19,8 +19,9 @@ const logger = createChildLogger({ moduleId: 'files-replayer' });
 async function startReplayFilesTask(
     context: AppContext
 ): Promise<void> {
-    const { api, database } = context;
+    const { api, database, config } = context;
     const configOp = createConfigOps(database);
+    const pinServiceAuthHeader = config.chain.pinServiceAuthHeader;
     
     // Set the flag first
     if (IsFilesReplaying) {
@@ -71,7 +72,7 @@ async function startReplayFilesTask(
                 const cid = record.cid;
 
                 // Re-place the order through Crust Pinning service
-                const result = await placeOrder(cid, logger);
+                const result = await placeOrder(cid, pinServiceAuthHeader, logger);
 
                 if (result) {
                     const replayBlock = api.latestFinalizedBlock();
@@ -100,7 +101,7 @@ async function startReplayFilesTask(
                 }
                 const elapsedTime = Date.now() - startTime;
                 const sleepTime = (3600000 - elapsedTime) / (toReplayRecords.length - replayedCount); // Remaining time / remaining files count
-                logger.info(`Sleep ${(sleepTime/1000).toFixed(2)} s for next file replay`);
+                logger.info(`Sleep ${(sleepTime/1000).toFixed(2)}s for next file replay`);
                 await sleep(sleepTime);
             }
         } catch (err) {
@@ -115,7 +116,7 @@ async function startReplayFilesTask(
     logger.info('End to run files replayer');
 }
 
-async function placeOrder(cid: string, logger: Logger): Promise<boolean> {
+async function placeOrder(cid: string, pinServiceAuthHeader: string, logger: Logger): Promise<boolean> {
 
     let result = false;
     try {
@@ -123,7 +124,7 @@ async function placeOrder(cid: string, logger: Logger): Promise<boolean> {
             'https://pin.crustcode.com/psa/pins',
             {
                 headers: {
-                    'Authorization': 'Bearer c3Vic3RyYXRlLWNUS2p6blpHQmJDTFJFd2FiWm5HTnRCeERhdGNXOE40QW9yeHQ2TFBLMUo5b2cybnQ6MHg3Njc3NTY1OTk4MWMxZTE0ZDM0MjBhMjI5MDhkYzFjYzU0Y2NiNzJiNTU5NzIwYjM4ZTZmMGIwN2Y2ZmQ0ODBmNWM0YjlmODJmNTg1N2MwMTRlZWFkNjZiN2RjZjIyZTliOWY4NzBjYTI1MjlmNmUzOTE0YWU4YjMwZWYxYjE4OQ==',
+                    'Authorization': pinServiceAuthHeader,
                     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
                 },
                 json: { cid }

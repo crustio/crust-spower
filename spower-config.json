@@ -14,7 +14,8 @@
     "filesV2IndexChangedSyncInterval": "10",
     "spowerReadyPeriod": "10",
     "spowerCalculateBatchSize": "1000",
-    "spowerServiceEffectiveBlock": "1"
+    "spowerServiceEffectiveBlock": "1",
+    "pinServiceAuthHeader": "Bear xxxxxx"
   },
   "telemetry": {
     "endPoint": "https://sm-submit.crust.network"
