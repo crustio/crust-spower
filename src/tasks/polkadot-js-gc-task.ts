@@ -33,7 +33,7 @@ async function forPolkadotJsGC(
       await Bluebird.delay(1 * 1000);
 
       await api.ensureConnection();
-      const curBlock: number = api.latestFinalizedBlock();
+      let curBlock: number = api.latestFinalizedBlock();
 
       // Do the gc at the [520th~580th] block in the slot, no work-reports-processor and spower-calculator-task are not running in this range
       const blockInSlot = curBlock % REPORT_SLOT;
@@ -57,38 +57,42 @@ async function forPolkadotJsGC(
       printMemoryUsage(logger);
 
       // Try to acquire the lock
-      await gcLock.acquireGCLock();
+      const lockResult = await gcLock.acquireGCLock();
+      if (lockResult) {
+        logger.info(`Stopping the api object...`);
+        await api.stop();
 
-      logger.info(`Stopping the api object...`);
-      await api.stop();
+        logger.info(`Stopped api successfully, wait a while to reconnect...`);
+        await Bluebird.delay(10 * 1000);
 
-      logger.info(`Stopped api successfully, wait a while to reconnect...`);
-      await Bluebird.delay(10 * 1000);
+        logger.info(`Reinitializing the api object...`);
+        await api.initApi();
 
-      logger.info(`Reinitializing the api object...`);
-      await api.initApi();
+        logger.info(`Reinitialized api successfully, wait a while for the api to get ready...`);
+        await Bluebird.delay(10 * 1000);
 
-      logger.info(`Reinitialized api successfully, wait a while for the api to get ready...`);
-      await Bluebird.delay(10 * 1000);
+        // Force gc manually
+        if (global.gc) {
+          logger.info(`Forcing garbage collection...`);
+          global.gc();
+          logger.info(`Garbage collection done!`);
+        }
 
-      // Force gc manually
-      if (global.gc) {
-        logger.info(`Forcing garbage collection...`);
-        global.gc();
-        logger.info(`Garbage collection done!`);
+        logger.info(`GC task finished`);
+        logger.info("Memory Usage after GC:");
+        printMemoryUsage(logger);
+
+        // Save the gc block for reference
+        curBlock = api.latestFinalizedBlock();
+        configOp.saveInt(KeyLastGCBlock, curBlock);
+      } else {
+        logger.warn(`Failed to acquire the gc lock, skip this round's gc task`);
       }
-
-      logger.info(`GC task finished`);
-      logger.info("Memory Usage after GC:");
-      printMemoryUsage(logger);
-
-      // Save the gc block for reference
-      configOp.saveInt(KeyLastGCBlock, curBlock);
 
       // Sleep for next slot
       const waitTime = (REPORT_SLOT - blockInSlot + GC_START_BLOCK) * 6 * 1000;
       logger.info(`Sleep for ${waitTime/1000} s to gc polkadot-js in next slot`);
-      await gcLock.releaseGCLock();
+      await gcLock.releaseGCLock(); // Make sure to release the lock before sleep
       await Bluebird.delay(waitTime);
     } catch (err) {
       logger.error(`💥 Error to gc polkadot-js: ${err}`);

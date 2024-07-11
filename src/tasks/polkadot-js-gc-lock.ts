@@ -31,7 +31,7 @@ export default class PolkadotJsGCLock {
                 // Release the task lock first
                 this.tasksLockMap.set(taskName.toString(), false);
 
-                await sleep(2000);
+                await sleep(3000);
             } else {
                 logger.debug(`Acquired the task lock successfully - '${taskName}'`);
                 this.tasksLockMap.set(taskName.toString(), true);
@@ -44,7 +44,9 @@ export default class PolkadotJsGCLock {
         this.tasksLockMap.set(taskName.toString(), false);
     }
 
-    public async acquireGCLock(): Promise<void> {
+    public async acquireGCLock(): Promise<boolean> {
+        const MaxRetryTimes = 100;
+        let retryTimes = 0;
         do {
             // Set the flag first
             this.isInGCPhase = true;
@@ -60,9 +62,16 @@ export default class PolkadotJsGCLock {
 
             if (allReleased) {
                 logger.info(`Acquired the gc lock successfully`);
-                break;
+                return true;
             } else {
-                await sleep(2000);
+                retryTimes++;
+                if (retryTimes > MaxRetryTimes) {
+                    // Exceed the max retry times, release the lock and return false
+                    this.isInGCPhase = false;
+                    return false;
+                }
+                // Keep waiting
+                await sleep(3000);
             }
         } while(true);
     }
