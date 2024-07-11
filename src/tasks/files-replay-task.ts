@@ -68,7 +68,7 @@ async function startReplayFilesTask(
             // Replay the files within one hour
             let replayedCount = 0;
             const startTime = Date.now();
-            const estimatePlaceOrderTime = 3000; // Average place order time is around 1~5 second(include timeout orders)
+            const estimatePlaceOrderTime = 5000; // place order time const around 1~30 seconds(include timeout orders)
             const estimateTotalPlacerOrderTime = estimatePlaceOrderTime * toReplayRecords.length;
             for (const record of toReplayRecords) {
                 const cid = record.cid;
@@ -133,8 +133,7 @@ async function placeOrder(cid: string, pinServiceAuthHeader: string, logger: Log
                     'Authorization': pinServiceAuthHeader,
                     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
                 },
-                json: { cid },
-                timeout: 10000
+                json: { cid }
             }
         );
 
