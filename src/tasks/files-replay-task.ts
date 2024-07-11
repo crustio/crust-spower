@@ -68,6 +68,8 @@ async function startReplayFilesTask(
             // Replay the files within one hour
             let replayedCount = 0;
             const startTime = Date.now();
+            const estimatePlaceOrderTime = 3000; // Average place order time is around 1~5 second(include timeout orders)
+            const estimateTotalPlacerOrderTime = estimatePlaceOrderTime * toReplayRecords.length;
             for (const record of toReplayRecords) {
                 const cid = record.cid;
 
@@ -100,7 +102,11 @@ async function startReplayFilesTask(
                     break;
                 }
                 const elapsedTime = Date.now() - startTime;
-                const sleepTime = (3600000 - elapsedTime) / (toReplayRecords.length - replayedCount); // Remaining time / remaining files count
+                const sleepTime = (3600000 - elapsedTime - estimateTotalPlacerOrderTime) / (toReplayRecords.length - replayedCount); // Remaining time / remaining files count
+                if (sleepTime < 0) {
+                    // Don't need any sleep, continue to next file immediately
+                    continue;
+                }
                 logger.info(`Sleep ${(sleepTime/1000).toFixed(2)}s for next file replay`);
                 await sleep(sleepTime);
             }
