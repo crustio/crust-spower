@@ -69,7 +69,7 @@ async function startReplayFilesTask(
             // Replay the files parallelly
             const startTime = Date.now();
             const requestBatchCount = Math.ceil(toReplayRecords.length / requestBatchSize);
-            const estimateBatchExecuteTime = 10000; // Estimate each batch cost 10 seconds averagely
+            const estimateBatchExecuteTime = 20000; // Estimate each batch cost 20 seconds averagely
             const estimateTotalExecuteTime = estimateBatchExecuteTime * requestBatchCount;
             for (let i = 0; i < toReplayRecords.length; i += requestBatchSize) {
                 const toReplayRecordsChunk = toReplayRecords.slice(i, i + requestBatchSize);
@@ -80,6 +80,7 @@ async function startReplayFilesTask(
                         const cid = record.cid;
                         let result = false;
                         try {
+                            logger.info(`Start to replay '${cid}'`);
                             // Re-place the order through Crust Pinning service
                             const orderPlaceResult = await placeOrder(cid, pinServiceAuthHeader, logger);
 
@@ -211,6 +212,7 @@ async function startUpdateReplayResultTask(
                         cid: cids
                     }
                 });
+                logger.info(`Retrieve ${filesV2Records.length} records from files_v2 table`);
 
                 const filesV2Map = new Map<string, FilesV2Record>();
                 for (const record of filesV2Records) {
@@ -287,6 +289,7 @@ async function startUpdateReplayResultTask(
                 }
 
                 // Update results in batch in a transaction
+                logger.info(`Start to update results to DB in batch`);
                 await database.transaction(async (transaction) => {
                     // Update replica count results
                     await FilesReplayRecord.bulkCreate(updateOneHourReplicaCountResults, {
