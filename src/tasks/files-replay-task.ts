@@ -76,7 +76,7 @@ async function startReplayFilesTask(
                 // Generate te promise object for this trunk
                 const requestsBatch = [];
                 for (const record of toReplayRecordsChunk) {
-                    requestsBatch.push(new Promise(async (resolve)=>{
+                    const fileReplayTask = async () => {
                         const cid = record.cid;
                         let result = false;
                         try {
@@ -106,9 +106,12 @@ async function startReplayFilesTask(
                             result = true;
                         } catch(err) {
                             logger.warn(`💥 Error to replay file '${cid}': ${err}`);
-                        } finally {
-                            resolve(result);
                         }
+                        return result;
+                    };
+
+                    requestsBatch.push(new Promise((resolve, reject)=>{
+                        fileReplayTask().then(resolve).catch(reject);     
                     }));
                 }
 
