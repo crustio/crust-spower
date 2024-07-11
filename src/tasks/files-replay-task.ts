@@ -30,15 +30,6 @@ async function startReplayFilesTask(
     IsFilesReplaying = true;
     logger.info('Start to run files replayer...');
 
-    // Get the ReplayCountPerHour
-    let replayCountPerHour = await configOp.readInt(KeyFilesRelayerReplayCountPerHour);
-    if (_.isNil(replayCountPerHour) || replayCountPerHour <= 0) {
-        logger.info(`No '${KeyFilesRelayerReplayCountPerHour}' config found in DB, set the default value to 300`);
-        replayCountPerHour = 300;
-        configOp.saveInt(KeyFilesRelayerReplayCountPerHour, replayCountPerHour);
-    }
-    logger.info(`replayCountPerHour: ${replayCountPerHour}`);
-
     // Trigger to run replay result updater
     startUpdateReplayResultTask(context);
 
@@ -47,6 +38,15 @@ async function startReplayFilesTask(
         try {
             // Sleep a while
             await sleep(1000);
+
+            // Get the replayCountPerHour from DB config every round
+            let replayCountPerHour = await configOp.readInt(KeyFilesRelayerReplayCountPerHour);
+            if (_.isNil(replayCountPerHour) || replayCountPerHour <= 0) {
+                logger.info(`No '${KeyFilesRelayerReplayCountPerHour}' config found in DB, set the default value to 300`);
+                replayCountPerHour = 300;
+                configOp.saveInt(KeyFilesRelayerReplayCountPerHour, replayCountPerHour);
+            }
+            logger.info(`replayCountPerHour: ${replayCountPerHour}`);
 
             // Read new files from the files_replay table
             const toReplayRecords = await FilesReplayRecord.findAll({
@@ -100,6 +100,7 @@ async function startReplayFilesTask(
                 }
                 const elapsedTime = Date.now() - startTime;
                 const sleepTime = (3600000 - elapsedTime) / (toReplayRecords.length - replayedCount); // Remaining time / remaining files count
+                logger.info(`Sleep ${(sleepTime/1000).toFixed(2)} s for next file replay`);
                 await sleep(sleepTime);
             }
         } catch (err) {
