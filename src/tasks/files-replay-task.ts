@@ -133,12 +133,16 @@ async function placeOrder(cid: string, pinServiceAuthHeader: string, logger: Log
                     'Authorization': pinServiceAuthHeader,
                     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
                 },
-                json: { cid }
+                json: { cid },
+                timeout: 10000
             }
         );
 
         if (response && response.statusCode <= 300) {
             result = true;
+        } else {
+            logger.warn(`Failed to pin file '${cid}': Reponse Code: ${response?response.statusCode:'Null Response'}`);
+            result = false;
         }
     } catch (err) {
         logger.error(`💥 Error in pin file '${cid}': ${err}`);
