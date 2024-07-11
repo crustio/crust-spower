@@ -297,6 +297,8 @@ async function calculateSpower(
         await updateDB(toDeleteCids, toUpdateRecords, newLastSpowerUpdateBlock, database, logger, filesV2Op, configOp);
       } else {
         logger.error('Call swork.update_spower failed, wait a while and try later');
+        // Althrough the api returns failed, the update_spower extrinsic may actually succeed, wait a while and make the block finalized
+        await Bluebird.delay(6000);
       }
     } catch (err) {
       logger.error(`💥 Error to calculate spower: ${err}`);
