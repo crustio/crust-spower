@@ -66,8 +66,11 @@ async function startReplayFilesTask(
 
             logger.info(`Get ${toReplayRecords.length} files to replay`);
 
-            // Construct the promise array to send request parallely
-            const requestsBatchList = [];
+            // Replay the files parallelly
+            const startTime = Date.now();
+            const requestBatchCount = Math.ceil(toReplayRecords.length / requestBatchSize);
+            const estimateBatchExecuteTime = 10000; // Estimate each batch cost 10 seconds averagely
+            const estimateTotalExecuteTime = estimateBatchExecuteTime * requestBatchCount;
             for (let i = 0; i < toReplayRecords.length; i += requestBatchSize) {
                 const toReplayRecordsChunk = toReplayRecords.slice(i, i + requestBatchSize);
                 // Generate te promise object for this trunk
@@ -108,17 +111,6 @@ async function startReplayFilesTask(
                     }));
                 }
 
-                // Add the requestsBatch into the list
-                requestsBatchList.push(requestsBatch);
-            }
-
-            // Iterate each batch and execute the requests inside a batch parallely
-            const startTime = Date.now();
-            const estimateBatchExecuteTime = 10000; // Estimate each batch cost 10 seconds averagely
-            const estimateTotalExecuteTime = estimateBatchExecuteTime * requestsBatchList.length;
-            for (let i = 0; i < requestsBatchList.length; i++) {
-                const requestsBatch = requestsBatchList[i];
-                // Run the batch parallelly
                 const batchStartTime = Date.now();
                 await Promise.all(requestsBatch);
                 const batchEndTime = Date.now();
@@ -126,7 +118,7 @@ async function startReplayFilesTask(
 
                 // Sleep a while to try to make the request distribute evenly within an hour
                 const elapsedTime = Date.now() - startTime;
-                const remainingBatchCount = requestsBatchList.length - (i+1);
+                const remainingBatchCount = requestBatchCount - (i+1);
                 if (remainingBatchCount == 0)
                     break;
 
