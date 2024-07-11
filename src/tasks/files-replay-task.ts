@@ -22,6 +22,7 @@ async function startReplayFilesTask(
     const { api, database, config } = context;
     const configOp = createConfigOps(database);
     const pinServiceAuthHeader = config.chain.pinServiceAuthHeader;
+    const requestBatchSize = 5;
     
     // Set the flag first
     if (IsFilesReplaying) {
@@ -65,49 +66,76 @@ async function startReplayFilesTask(
 
             logger.info(`Get ${toReplayRecords.length} files to replay`);
 
-            // Replay the files within one hour
-            let replayedCount = 0;
+            // Construct the promise array to send request parallely
+            const requestsBatchList = [];
+            for (let i = 0; i < toReplayRecords.length; i += requestBatchSize) {
+                const toReplayRecordsChunk = toReplayRecords.slice(i, i + requestBatchSize);
+                // Generate te promise object for this trunk
+                const requestsBatch = [];
+                for (const record of toReplayRecordsChunk) {
+                    requestsBatch.push(new Promise(async (resolve)=>{
+                        const cid = record.cid;
+                        let result = false;
+                        try {
+                            // Re-place the order through Crust Pinning service
+                            const orderPlaceResult = await placeOrder(cid, pinServiceAuthHeader, logger);
+
+                            if (orderPlaceResult) {
+                                const replayBlock = api.latestFinalizedBlock();
+                                await FilesReplayRecord.update({
+                                    status: 'replayed',
+                                    replay_block: replayBlock
+                                }, {
+                                    where: { cid },
+                                });
+
+                                logger.info(`Replay '${cid}' success`);
+                            } else {
+                                await FilesReplayRecord.update({
+                                    status: 'failed'
+                                }, {
+                                    where: { cid },
+                                });
+
+                                logger.warn(`Replay '${cid}' failed, try in next time`);
+                            }
+                            result = true;
+                        } catch(err) {
+                            logger.warn(`💥 Error to replay file '${cid}': ${err}`);
+                        } finally {
+                            resolve(result);
+                        }
+                    }));
+                }
+
+                // Add the requestsBatch into the list
+                requestsBatchList.push(requestsBatch);
+            }
+
+            // Iterate each batch and execute the requests inside a batch parallely
             const startTime = Date.now();
-            const estimatePlaceOrderTime = 5000; // place order time const around 1~30 seconds(include timeout orders)
-            const estimateTotalPlacerOrderTime = estimatePlaceOrderTime * toReplayRecords.length;
-            for (const record of toReplayRecords) {
-                const cid = record.cid;
+            const estimateBatchExecuteTime = 10000; // Estimate each batch cost 10 seconds averagely
+            const estimateTotalExecuteTime = estimateBatchExecuteTime * requestsBatchList.length;
+            for (let i = 0; i < requestsBatchList.length; i++) {
+                const requestsBatch = requestsBatchList[i];
+                // Run the batch parallelly
+                const batchStartTime = Date.now();
+                await Promise.all(requestsBatch);
+                const batchEndTime = Date.now();
+                logger.info(`Finish execute request batch #${i+1} in ${((batchEndTime-batchStartTime)/1000).toFixed(2)}s`);
 
-                // Re-place the order through Crust Pinning service
-                const result = await placeOrder(cid, pinServiceAuthHeader, logger);
-
-                if (result) {
-                    const replayBlock = api.latestFinalizedBlock();
-                    await FilesReplayRecord.update({
-                        status: 'replayed',
-                        replay_block: replayBlock
-                    }, {
-                        where: { cid },
-                    });
-
-                    logger.info(`Replay '${cid}' success`);
-                } else {
-                    await FilesReplayRecord.update({
-                        status: 'failed'
-                    }, {
-                        where: { cid },
-                    });
-
-                    logger.warn(`Replay '${cid}' failed, try in next time`);
-                }
-
-                // Sleep to distribute files within one hour
-                replayedCount++;
-                if (replayedCount == toReplayRecords.length) {
-                    break;
-                }
+                // Sleep a while to try to make the request distribute evenly within an hour
                 const elapsedTime = Date.now() - startTime;
-                const sleepTime = (3600000 - elapsedTime - estimateTotalPlacerOrderTime) / (toReplayRecords.length - replayedCount); // Remaining time / remaining files count
+                const remainingBatchCount = requestsBatchList.length - (i+1);
+                if (remainingBatchCount == 0)
+                    break;
+
+                const sleepTime = (3600000 - elapsedTime - estimateTotalExecuteTime) / remainingBatchCount; // Remaining time / remaining batch count
                 if (sleepTime < 0) {
                     // Don't need any sleep, continue to next file immediately
                     continue;
                 }
-                logger.info(`Sleep ${(sleepTime/1000).toFixed(2)}s for next file replay`);
+                logger.info(`Sleep ${(sleepTime/1000).toFixed(2)}s for next file batch replay`);
                 await sleep(sleepTime);
             }
         } catch (err) {
@@ -144,7 +172,7 @@ async function placeOrder(cid: string, pinServiceAuthHeader: string, logger: Log
             result = false;
         }
     } catch (err) {
-        logger.error(`💥 Error in pin file '${cid}': ${err}`);
+        logger.warn(`💥 Error in pin file '${cid}': ${err}`);
     }
 
     return result;
