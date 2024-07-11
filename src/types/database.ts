@@ -261,3 +261,93 @@ export class FilesToIndexQueueRecord extends Model<InferAttributes<FilesToIndexQ
   });
   }
 };
+
+
+/// ------------------------------------------------
+/// files_replay table
+export class FilesReplayRecord extends Model<InferAttributes<FilesReplayRecord>, InferCreationAttributes<FilesReplayRecord>> {
+  declare id: CreationOptional<number>;
+  declare cid: string;
+  declare status: string;
+  declare replay_block: number;
+  declare initial_calculated_at: number;
+  declare initial_expired_at: number;
+  declare latest_expired_at: number;
+  declare initial_replica_count: number;
+  declare one_hour_replica_count: number;
+  declare two_hour_replica_count: number;
+  declare three_hour_replica_count: number;
+  declare six_hour_replica_count: number;
+  declare one_day_replica_count: number;
+  declare last_updated: CreationOptional<Date>;
+  declare create_at: CreationOptional<Date>;
+  static initModel(sequelize: Sequelize) {
+    FilesReplayRecord.init({
+    id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      primaryKey: true,
+      autoIncrement: true, 
+    },
+    cid: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    status: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    replay_block: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    initial_calculated_at: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    initial_expired_at: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    latest_expired_at: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    initial_replica_count: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    one_hour_replica_count: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    two_hour_replica_count: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    three_hour_replica_count: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    six_hour_replica_count: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    one_day_replica_count: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    last_updated: {
+        type: DataTypes.DATE(3),
+        allowNull: false,
+    },
+    create_at: {
+        type: DataTypes.DATE(3),
+        allowNull: false,
+    },
+  }, {
+    sequelize,
+    tableName: 'files_replay'
+  });
+  }
+};

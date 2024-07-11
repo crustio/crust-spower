@@ -11,6 +11,7 @@ import { Op } from 'sequelize';
 import { convertBlockNumberToReportSlot } from '../utils';
 import { SPOWER_UPDATE_START_OFFSET } from '../utils/consts';
 import { Dayjs } from '../utils/datetime';
+import { triggerFilesReplayer } from '../tasks/files-replay-task';
 
 const logger = createChildLogger({ moduleId: 'api-metrics' });
 
@@ -127,6 +128,18 @@ export async function processFilesToIndexQueue(_req: Request, res: Response, con
   
   // Just trigger the process and then return directly
   const result = triggerManualFilesIndexer(context);
+
+  if (result.code === 'OK') {
+    res.json(result);
+  } else {
+    res.status(400).json(result);
+  }
+}
+
+export async function replayFiles(_req: Request, res: Response, context: AppContext): Promise<void> {
+  
+  // Just trigger the process and then return directly
+  const result = triggerFilesReplayer(context);
 
   if (result.code === 'OK') {
     res.json(result);

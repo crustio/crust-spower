@@ -2,7 +2,7 @@ import express, {Application, NextFunction} from 'express';
 import {Request, Response} from 'express';
 import * as bodyParser from 'body-parser';
 import timeout from 'connect-timeout';
-import { processFilesToIndexQueue, stats } from './api';
+import { processFilesToIndexQueue, replayFiles, stats } from './api';
 import { AppContext } from '../types/context';
 import { createChildLogger } from '../utils/logger';
 
@@ -36,6 +36,7 @@ export default class CrustSpowerHttpServer {
 
     // Post routes
     this.app.post('/api/v1/files_queue/process', (req, res) => { processFilesToIndexQueue(req, res, this.context); });
+    this.app.post('/api/v1/files/replay', (req, res) => { replayFiles(req, res, this.context); });
 
     // Error handler
     this.app.use(this.errorHandler);
