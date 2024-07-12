@@ -24,6 +24,8 @@ async function startReplayFilesTask(
 ): Promise<void> {
     const { api, database } = context;
     const configOp = createConfigOps(database);
+    let totalBatchExecuteTime = 0;
+    let totalBatchExecuteCount = 0;
     
     // Set the flag first
     if (IsFilesReplaying) {
@@ -79,8 +81,6 @@ async function startReplayFilesTask(
             // Replay the files parallelly
             const startTime = Date.now();
             const requestBatchCount = Math.ceil(toReplayRecords.length / requestParallelCount);
-            const estimateBatchExecuteTime = 30000; // Estimate each batch cost 30 seconds averagely
-            const estimateTotalExecuteTime = estimateBatchExecuteTime * requestBatchCount;
             for (let i = 0; i < toReplayRecords.length; i += requestParallelCount) {
                 const toReplayRecordsChunk = toReplayRecords.slice(i, i + requestParallelCount);
                 // Generate te promise object for this trunk
@@ -129,15 +129,20 @@ async function startReplayFilesTask(
                 const batchStartTime = Date.now();
                 await Promise.all(requestsBatch);
                 const batchEndTime = Date.now();
-                logger.info(`Finish execute request batch #${i+1} in ${((batchEndTime-batchStartTime)/1000).toFixed(2)}s`);
+                const batchExecuteTime = batchEndTime - batchStartTime;
+                logger.info(`Finish execute request batch #${i+1} in ${(batchExecuteTime/1000).toFixed(2)}s`);
 
                 // Sleep a while to try to make the request distribute evenly within an hour
+                totalBatchExecuteTime += batchExecuteTime;
+                totalBatchExecuteCount++;
+                const avgBatchExecuteTime = totalBatchExecuteTime / totalBatchExecuteCount;
                 const elapsedTime = Date.now() - startTime;
                 const remainingBatchCount = requestBatchCount - (i+1);
                 if (remainingBatchCount == 0)
                     break;
 
-                const sleepTime = (3600000 - elapsedTime - estimateTotalExecuteTime) / remainingBatchCount; // Remaining time / remaining batch count
+                // (Remaining time - Estimate remaining execute time) / Remaining batch count
+                const sleepTime = (3600000 - elapsedTime - (avgBatchExecuteTime*remainingBatchCount)) / remainingBatchCount;
                 if (sleepTime < 0) {
                     // Don't need any sleep, continue to next file immediately
                     continue;
