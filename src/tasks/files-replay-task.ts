@@ -13,6 +13,7 @@ import { Op } from 'sequelize';
 import { createConfigOps } from '../db/configs';
 
 const KeyFilesRelayerReplayCountPerHour = 'files-replay-task:replay-count-per-hour';
+const KeyFilesReplayerRequestParallelCount = 'files-replay-task:request-parallel-count';
 let IsFilesReplaying = false;
 const logger = createChildLogger({ moduleId: 'files-replayer' });
 
@@ -22,7 +23,6 @@ async function startReplayFilesTask(
     const { api, database, config } = context;
     const configOp = createConfigOps(database);
     const pinServiceAuthHeader = config.chain.pinServiceAuthHeader;
-    const requestBatchSize = 5;
     
     // Set the flag first
     if (IsFilesReplaying) {
@@ -50,6 +50,15 @@ async function startReplayFilesTask(
             }
             logger.info(`replayCountPerHour: ${replayCountPerHour}`);
 
+            // Get the requestParallelCount from DB config every round
+            let requestParallelCount = await configOp.readInt(KeyFilesReplayerRequestParallelCount);
+            if (_.isNil(requestParallelCount) || requestParallelCount <= 0) {
+                logger.info(`No '${KeyFilesReplayerRequestParallelCount}' config found in DB, set the default value to 5`);
+                requestParallelCount = 5;
+                configOp.saveInt(KeyFilesReplayerRequestParallelCount, requestParallelCount);
+            }
+            logger.info(`requestParallelCount: ${requestParallelCount}`);
+
             // Read new files from the files_replay table
             const toReplayRecords = await FilesReplayRecord.findAll({
                 attributes: ['cid'],
@@ -68,11 +77,11 @@ async function startReplayFilesTask(
 
             // Replay the files parallelly
             const startTime = Date.now();
-            const requestBatchCount = Math.ceil(toReplayRecords.length / requestBatchSize);
-            const estimateBatchExecuteTime = 20000; // Estimate each batch cost 20 seconds averagely
+            const requestBatchCount = Math.ceil(toReplayRecords.length / requestParallelCount);
+            const estimateBatchExecuteTime = 30000; // Estimate each batch cost 30 seconds averagely
             const estimateTotalExecuteTime = estimateBatchExecuteTime * requestBatchCount;
-            for (let i = 0; i < toReplayRecords.length; i += requestBatchSize) {
-                const toReplayRecordsChunk = toReplayRecords.slice(i, i + requestBatchSize);
+            for (let i = 0; i < toReplayRecords.length; i += requestParallelCount) {
+                const toReplayRecordsChunk = toReplayRecords.slice(i, i + requestParallelCount);
                 // Generate te promise object for this trunk
                 const requestsBatch = [];
                 for (const record of toReplayRecordsChunk) {
