@@ -207,8 +207,8 @@ async function placeOrder(cid: string, fileSize: bigint, context: AppContext, lo
 async function startUpdateReplayResultTask(
     context: AppContext
 ): Promise<void> {
-    const { database } = context;
-    const batchSize = 1000;
+    const { database, api } = context;
+    const batchSize = 500;
     const logger = createChildLogger({ moduleId: 'files-replayer-update-task' });
 
     logger.info('Start to run update replay result task...');
@@ -240,7 +240,7 @@ async function startUpdateReplayResultTask(
                 // Get the latest file info from files_v2 data
                 const cids = toUpdateRecords.map((r: any) => r.cid);
                 const filesV2Records = await FilesV2Record.findAll({
-                    attributes: ['cid', 'expired_at', 'reported_replica_count', 'last_sync_block'],
+                    attributes: ['cid', 'expired_at', 'reported_replica_count'],
                     where: { 
                         cid: cids
                     }
@@ -270,7 +270,7 @@ async function startUpdateReplayResultTask(
                         });
                     }
 
-                    const diffBlockCount = fileV2Record.last_sync_block - record.replay_block;
+                    const diffBlockCount = api.latestFinalizedBlock() - record.replay_block;
                     if (diffBlockCount <= 600) {
                         updateOneHourReplicaCountResults.push({
                             id: record.id,
@@ -312,6 +312,14 @@ async function startUpdateReplayResultTask(
                             one_day_replica_count: fileV2Record.reported_replica_count
                         });
                     } else {
+                        // Make sure to update the final data 
+                        updateOneDayReplicaCountResults.push({
+                            id: record.id,
+                            cid: record.cid,
+                            status: 'processed',
+                            latest_expired_at: fileV2Record.expired_at,
+                            one_day_replica_count: fileV2Record.reported_replica_count
+                        });
                         // Already over one day, mark as done
                         updateDoneResults.push({
                             id: record.id,
@@ -342,7 +350,7 @@ async function startUpdateReplayResultTask(
                         transaction
                     });
                     await FilesReplayRecord.bulkCreate(updateOneDayReplicaCountResults, {
-                        updateOnDuplicate: ['latest_expired_at', 'one_day_replica_count'],
+                        updateOnDuplicate: ['status', 'latest_expired_at', 'one_day_replica_count'],
                         transaction
                     });
                 
