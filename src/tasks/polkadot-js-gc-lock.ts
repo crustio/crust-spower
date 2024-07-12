@@ -9,6 +9,7 @@ export enum TaskName {
     WorkReportsProcessorTask = 'WorkReportsProcessorTask',
     FilesV2IndexerTask = 'FilesV2IndexerTask',
     SpowerCalculatorTask= 'SpowerCalculatorTask',
+    FilesReplayTask = 'FilesReplayTask';
 }
 
 export default class PolkadotJsGCLock {

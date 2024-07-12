@@ -618,7 +618,7 @@ export default class CrustApi {
     return false;
   }
 
-  async placeStorageOrder(sender: KeyringPair, cid: string, fileSize: bigint): Promise<boolean> {
+  async placeStorageOrder(sender: KeyringPair, nonce: number, cid: string, fileSize: bigint): Promise<boolean> {
     await this.withApiReady();
 
     const tips = 0;
@@ -626,7 +626,7 @@ export default class CrustApi {
     const tx = this.api.tx.market.placeStorageOrder(cid, fileSize, tips, memo);
 
     // This transaction may be called parallely, so handle it without lock
-    let txRes = queryToObj(await this.handleTxWithoutLock(async () => this.sendTx(tx, sender, false)));
+    let txRes = queryToObj(await this.handleTxWithoutLock(async () => this.sendTx(tx, sender, nonce, false)));
     txRes = txRes ? txRes : {status:'failed', message: 'Null txRes'};
     if (txRes.status == 'success') {
       return true;
@@ -669,12 +669,12 @@ export default class CrustApi {
     }
   }
 
-  private async sendTx(tx: SubmittableExtrinsic, specifiedKrp?: KeyringPair, doLog?: boolean) {
-    const showLog = _.isNil(doLog) ? true : doLog;
+  private async sendTx(tx: SubmittableExtrinsic, specifiedKrp?: KeyringPair, nonce?: number, doLog?: boolean) {
+    const showLog: boolean = _.isNil(doLog) ? true : doLog;
     return new Promise((resolve, reject) => {
       const krp = _.isNil(specifiedKrp) ? this.krp : specifiedKrp;
-      tx.signAndSend(krp, ({events = [], status}) => {
-        if (showLog)
+      tx.signAndSend(krp, {nonce}, ({events = [], status}) => {
+        if (showLog == true)
           logger.info(`  ↪ 💸 [tx]: Transaction status: ${status.type}, nonce: ${tx.nonce}`);
 
         if (status.isInvalid || status.isDropped || status.isUsurped) {
@@ -701,7 +701,7 @@ export default class CrustApi {
               result.details = error.documentation.join('');
             }
 
-            if (showLog)
+            if (showLog == true)
               logger.info(`  ↪ 💸 ❌ [tx]: Send transaction(${tx.type}) failed with ${result.message}`);
             resolve(result);
           } else if (method === 'ExtrinsicSuccess') {
@@ -709,7 +709,7 @@ export default class CrustApi {
               status: 'success',
             };
 
-            if (showLog)
+            if (showLog == true)
               logger.info(`  ↪ 💸 ✅ [tx]: Send transaction(${tx.type}) success.`);
             resolve(result);
           }

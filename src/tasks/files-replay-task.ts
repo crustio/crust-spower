@@ -12,20 +12,23 @@ import  got from 'got';
 import { Op } from 'sequelize';
 import { createConfigOps } from '../db/configs';
 import { Keyring } from '@polkadot/api';
+import { KeyringPair } from '@polkadot/keyring/types';
+import { TaskName } from './polkadot-js-gc-lock';
 
 const KeyFilesRelayerReplayCountPerHour = 'files-replay-task:replay-count-per-hour';
 const KeyFilesReplayerRequestParallelCount = 'files-replay-task:request-parallel-count';
 let IsFilesReplaying = false;
-let replayAccountKrp = null;
+let replayAccountKrp: KeyringPair = null;
 const logger = createChildLogger({ moduleId: 'files-replayer' });
 
 async function startReplayFilesTask(
     context: AppContext
 ): Promise<void> {
-    const { api, database } = context;
+    const { api, database, config, gcLock } = context;
     const configOp = createConfigOps(database);
     let totalBatchExecuteTime = 0;
     let totalBatchExecuteCount = 0;
+    const fileReplayOrderPlaceMode = config.chain.fileReplayOrderPlaceMode;
     
     // Set the flag first
     if (IsFilesReplaying) {
@@ -37,6 +40,12 @@ async function startReplayFilesTask(
 
     // Trigger to run replay result updater
     startUpdateReplayResultTask(context);
+
+    // Create the krp if the file order replay mode is 'Chain'
+    if (fileReplayOrderPlaceMode == 'Chain') {
+        const kr = new Keyring({type: 'sr25519'});
+        replayAccountKrp = kr.addFromUri(config.chain.replayAccountSeed);
+    }
 
     // Start the processing loop
     while (!context.isStopped) {
@@ -64,7 +73,7 @@ async function startReplayFilesTask(
 
             // Read new files from the files_replay table
             const toReplayRecords = await FilesReplayRecord.findAll({
-                attributes: ['cid'],
+                attributes: ['cid', 'file_size'],
                 where: {
                     status: ['new', 'failed']
                 },
@@ -84,6 +93,13 @@ async function startReplayFilesTask(
             for (let i = 0; i < toReplayRecords.length; i += requestParallelCount) {
                 const toReplayRecordsChunk = toReplayRecords.slice(i, i + requestParallelCount);
                 // Generate te promise object for this trunk
+                let nonce = null;
+                if (fileReplayOrderPlaceMode == 'Chain') {
+                    // Acquire gc lock if place mode is 'Chain'
+                    await gcLock.acquireTaskLock(TaskName.FilesReplayTask);
+                    // Retrieve the latest next nonce for the replayAccount
+                    nonce = parseInt(await api.chainApi().rpc.system.accountNextIndex(replayAccountKrp.address) as any);
+                }
                 const requestsBatch = [];
                 for (const record of toReplayRecordsChunk) {
                     const fileReplayTask = async () => {
@@ -92,8 +108,8 @@ async function startReplayFilesTask(
                         let result = false;
                         try {
                             logger.info(`Start to replay '${cid}'`);
-                            // Re-place the order through Crust Pinning service
-                            const orderPlaceResult = await placeOrder(cid, fileSize, context, logger);
+                            // Re-place the order through Crust Pinning service or send market.placeStorageOrder transaction
+                            const orderPlaceResult = await placeOrder(cid, fileSize, nonce, context, logger);
 
                             if (orderPlaceResult) {
                                 const replayBlock = api.latestFinalizedBlock();
@@ -124,6 +140,11 @@ async function startReplayFilesTask(
                     requestsBatch.push(new Promise((resolve, reject)=>{
                         fileReplayTask().then(resolve).catch(reject);     
                     }));
+
+                    // Increase nonce if it's under 'Chain' order place mode
+                    if (fileReplayOrderPlaceMode == 'Chain' && !_.isNil(nonce)) {
+                        nonce++;
+                    }
                 }
 
                 const batchStartTime = Date.now();
@@ -132,6 +153,10 @@ async function startReplayFilesTask(
                 const batchExecuteTime = batchEndTime - batchStartTime;
                 logger.info(`Finish execute request batch #${i+1} in ${(batchExecuteTime/1000).toFixed(2)}s`);
 
+                // Release the gc lock
+                if (fileReplayOrderPlaceMode == 'Chain') {
+                    await gcLock.releaseTaskLock(TaskName.FilesReplayTask);
+                }
                 // Sleep a while to try to make the request distribute evenly within an hour
                 totalBatchExecuteTime += batchExecuteTime;
                 totalBatchExecuteCount++;
@@ -152,6 +177,10 @@ async function startReplayFilesTask(
             }
         } catch (err) {
             logger.error(`💥 Error to replay files: ${err}`);
+            // Release the gc lock
+            if (fileReplayOrderPlaceMode == 'Chain') {
+                await gcLock.releaseTaskLock(TaskName.FilesReplayTask);
+            }
             // Sleep a while when exception throws
             await sleep(10*1000);
         }
@@ -162,7 +191,7 @@ async function startReplayFilesTask(
     logger.info('End to run files replayer');
 }
 
-async function placeOrder(cid: string, fileSize: bigint, context: AppContext, logger: Logger): Promise<boolean> {
+async function placeOrder(cid: string, fileSize: bigint, nonce: number, context: AppContext, logger: Logger): Promise<boolean> {
     const { config, api } = context;
     const fileReplayOrderPlaceMode = config.chain.fileReplayOrderPlaceMode;
     const pinServiceAuthHeader = config.chain.pinServiceAuthHeader;
@@ -190,12 +219,7 @@ async function placeOrder(cid: string, fileSize: bigint, context: AppContext, lo
             }
         } else {
             // Chain mode, send transaction directly
-            if (_.isNil(replayAccountKrp)) {
-                const kr = new Keyring({type: 'sr25519'});
-                replayAccountKrp = kr.addFromUri(config.chain.replayAccountSeed);
-            }
-            
-            result = await api.placeStorageOrder(replayAccountKrp, cid, fileSize);
+            result = await api.placeStorageOrder(replayAccountKrp, nonce, cid, fileSize);
         }
     } catch (err) {
         logger.warn(`💥 Error in place order for file '${cid}': ${err}`);
