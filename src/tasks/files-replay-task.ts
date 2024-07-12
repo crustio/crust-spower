@@ -90,6 +90,7 @@ async function startReplayFilesTask(
             // Replay the files parallelly
             const startTime = Date.now();
             const requestBatchCount = Math.ceil(toReplayRecords.length / requestParallelCount);
+            let replayedBatchCount = 0;
             for (let i = 0; i < toReplayRecords.length; i += requestParallelCount) {
                 const toReplayRecordsChunk = toReplayRecords.slice(i, i + requestParallelCount);
                 // Generate te promise object for this trunk
@@ -151,7 +152,8 @@ async function startReplayFilesTask(
                 await Promise.all(requestsBatch);
                 const batchEndTime = Date.now();
                 const batchExecuteTime = batchEndTime - batchStartTime;
-                logger.info(`Finish execute request batch #${i+1} in ${(batchExecuteTime/1000).toFixed(2)}s`);
+                replayedBatchCount++;
+                logger.info(`Finish execute request batch #${replayedBatchCount} in ${(batchExecuteTime/1000).toFixed(2)}s`);
 
                 // Release the gc lock
                 if (fileReplayOrderPlaceMode == 'Chain') {
@@ -162,7 +164,7 @@ async function startReplayFilesTask(
                 totalBatchExecuteCount++;
                 const avgBatchExecuteTime = totalBatchExecuteTime / totalBatchExecuteCount;
                 const elapsedTime = Date.now() - startTime;
-                const remainingBatchCount = requestBatchCount - (i+1);
+                const remainingBatchCount = requestBatchCount - replayedBatchCount;
                 if (remainingBatchCount == 0)
                     break;
 
