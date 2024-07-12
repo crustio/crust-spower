@@ -268,6 +268,7 @@ export class FilesToIndexQueueRecord extends Model<InferAttributes<FilesToIndexQ
 export class FilesReplayRecord extends Model<InferAttributes<FilesReplayRecord>, InferCreationAttributes<FilesReplayRecord>> {
   declare id: CreationOptional<number>;
   declare cid: string;
+  declare file_size: bigint;
   declare status: string;
   declare replay_block: number;
   declare initial_calculated_at: number;
@@ -292,6 +293,10 @@ export class FilesReplayRecord extends Model<InferAttributes<FilesReplayRecord>,
     cid: {
       type: DataTypes.STRING,
       allowNull: false,
+    },
+    file_size: {
+      type: DataTypes.BIGINT,
+      allowNull: true,
     },
     status: {
       type: DataTypes.STRING,

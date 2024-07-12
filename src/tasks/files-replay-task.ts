@@ -11,18 +11,19 @@ import { createChildLogger } from '../utils/logger';
 import  got from 'got';
 import { Op } from 'sequelize';
 import { createConfigOps } from '../db/configs';
+import { Keyring } from '@polkadot/api';
 
 const KeyFilesRelayerReplayCountPerHour = 'files-replay-task:replay-count-per-hour';
 const KeyFilesReplayerRequestParallelCount = 'files-replay-task:request-parallel-count';
 let IsFilesReplaying = false;
+let replayAccountKrp = null;
 const logger = createChildLogger({ moduleId: 'files-replayer' });
 
 async function startReplayFilesTask(
     context: AppContext
 ): Promise<void> {
-    const { api, database, config } = context;
+    const { api, database } = context;
     const configOp = createConfigOps(database);
-    const pinServiceAuthHeader = config.chain.pinServiceAuthHeader;
     
     // Set the flag first
     if (IsFilesReplaying) {
@@ -87,11 +88,12 @@ async function startReplayFilesTask(
                 for (const record of toReplayRecordsChunk) {
                     const fileReplayTask = async () => {
                         const cid = record.cid;
+                        const fileSize = record.file_size;
                         let result = false;
                         try {
                             logger.info(`Start to replay '${cid}'`);
                             // Re-place the order through Crust Pinning service
-                            const orderPlaceResult = await placeOrder(cid, pinServiceAuthHeader, logger);
+                            const orderPlaceResult = await placeOrder(cid, fileSize, context, logger);
 
                             if (orderPlaceResult) {
                                 const replayBlock = api.latestFinalizedBlock();
@@ -155,29 +157,43 @@ async function startReplayFilesTask(
     logger.info('End to run files replayer');
 }
 
-async function placeOrder(cid: string, pinServiceAuthHeader: string, logger: Logger): Promise<boolean> {
-
+async function placeOrder(cid: string, fileSize: bigint, context: AppContext, logger: Logger): Promise<boolean> {
+    const { config, api } = context;
+    const fileReplayOrderPlaceMode = config.chain.fileReplayOrderPlaceMode;
+    const pinServiceAuthHeader = config.chain.pinServiceAuthHeader;
     let result = false;
-    try {
-        const response = await got.post(
-            'https://pin.crustcode.com/psa/pins',
-            {
-                headers: {
-                    'Authorization': pinServiceAuthHeader,
-                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
-                },
-                json: { cid }
-            }
-        );
 
-        if (response && response.statusCode <= 300) {
-            result = true;
+    try {
+        if (fileReplayOrderPlaceMode == 'Pinner') {
+            // Pinner mode
+            const response = await got.post(
+                'https://pin.crustcode.com/psa/pins',
+                {
+                    headers: {
+                        'Authorization': pinServiceAuthHeader,
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
+                    },
+                    json: { cid }
+                }
+            );
+
+            if (response && response.statusCode <= 300) {
+                result = true;
+            } else {
+                logger.warn(`Failed to pin file '${cid}': Reponse Code: ${response?response.statusCode:'Null Response'}`);
+                result = false;
+            }
         } else {
-            logger.warn(`Failed to pin file '${cid}': Reponse Code: ${response?response.statusCode:'Null Response'}`);
-            result = false;
+            // Chain mode, send transaction directly
+            if (_.isNil(replayAccountKrp)) {
+                const kr = new Keyring({type: 'sr25519'});
+                replayAccountKrp = kr.addFromUri(config.chain.replayAccountSeed);
+            }
+            
+            result = await api.placeStorageOrder(replayAccountKrp, cid, fileSize);
         }
     } catch (err) {
-        logger.warn(`💥 Error in pin file '${cid}': ${err}`);
+        logger.warn(`💥 Error in place order for file '${cid}': ${err}`);
     }
 
     return result;

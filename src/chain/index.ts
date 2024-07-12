@@ -539,7 +539,7 @@ export default class CrustApi {
         return true;
       }
       else {
-        logger.error(`Failled to update replicas data to chain: ${txRes.message}`);
+        logger.error(`Failed to update replicas data to chain: ${txRes.message}`);
         return false;
       }
     } catch (err) {
@@ -552,7 +552,7 @@ export default class CrustApi {
     return false;
   }
 
-   async getLastSpowerUpdateBlock(): Promise<number> {
+  async getLastSpowerUpdateBlock(): Promise<number> {
     await this.withApiReady();
     
     const block = await this.api.query.swork.lastSpowerUpdateBlock();
@@ -605,7 +605,7 @@ export default class CrustApi {
         return true;
       }
       else {
-        logger.error(`Failled to update spower data to chain: ${txRes.message}`);
+        logger.error(`Failed to update spower data to chain: ${txRes.message}`);
         return false;
       }
     } catch (err) {
@@ -616,6 +616,35 @@ export default class CrustApi {
     }
 
     return false;
+  }
+
+  async placeStorageOrder(sender: KeyringPair, cid: string, fileSize: bigint): Promise<boolean> {
+    await this.withApiReady();
+
+    const tips = 0;
+    const memo = '';
+    const tx = this.api.tx.market.placeStorageOrder(cid, fileSize, tips, memo);
+
+    // This transaction may be called parallely, so handle it without lock
+    let txRes = queryToObj(await this.handleTxWithoutLock(async () => this.sendTx(tx, sender, false)));
+    txRes = txRes ? txRes : {status:'failed', message: 'Null txRes'};
+    if (txRes.status == 'success') {
+      return true;
+    }
+    else {
+      logger.warn(`Failed to place storage order to chain: ${txRes.message}`);
+      return false;
+    }
+  }
+
+  private async handleTxWithoutLock(handler: Function) {
+    return await timeout(
+      new Promise((resolve, reject) => {
+        handler().then(resolve).catch(reject);
+      }),
+      60 * 1000, // 1 min, for valid till checking
+      null
+    );
   }
 
   private async handleTxWithLock(lockName: string, handler: Function) {
@@ -640,10 +669,13 @@ export default class CrustApi {
     }
   }
 
-  private async sendTx(tx: SubmittableExtrinsic) {
+  private async sendTx(tx: SubmittableExtrinsic, specifiedKrp?: KeyringPair, doLog?: boolean) {
+    const showLog = _.isNil(doLog) ? true : doLog;
     return new Promise((resolve, reject) => {
-      tx.signAndSend(this.krp, ({events = [], status}) => {
-        logger.info(`  ↪ 💸 [tx]: Transaction status: ${status.type}, nonce: ${tx.nonce}`);
+      const krp = _.isNil(specifiedKrp) ? this.krp : specifiedKrp;
+      tx.signAndSend(krp, ({events = [], status}) => {
+        if (showLog)
+          logger.info(`  ↪ 💸 [tx]: Transaction status: ${status.type}, nonce: ${tx.nonce}`);
 
         if (status.isInvalid || status.isDropped || status.isUsurped) {
           reject(new Error(`${status.type} transaction.`));
@@ -669,14 +701,16 @@ export default class CrustApi {
               result.details = error.documentation.join('');
             }
 
-            logger.info(`  ↪ 💸 ❌ [tx]: Send transaction(${tx.type}) failed with ${result.message}`);
+            if (showLog)
+              logger.info(`  ↪ 💸 ❌ [tx]: Send transaction(${tx.type}) failed with ${result.message}`);
             resolve(result);
           } else if (method === 'ExtrinsicSuccess') {
             const result: TxRes = {
               status: 'success',
             };
 
-            logger.info(`  ↪ 💸 ✅ [tx]: Send transaction(${tx.type}) success.`);
+            if (showLog)
+              logger.info(`  ↪ 💸 ✅ [tx]: Send transaction(${tx.type}) success.`);
             resolve(result);
           }
         });

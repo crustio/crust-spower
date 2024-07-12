@@ -14,7 +14,9 @@ export interface ChainConfig {
   spowerReadyPeriod: number;
   spowerCalculateBatchSize: number;
   spowerServiceEffectiveBlock: number;
+  fileReplayOrderPlaceMode: string;
   pinServiceAuthHeader: string;
+  replayAccountSeed: string;
 }
 
 export interface TelemetryConfig {

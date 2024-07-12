@@ -18,7 +18,9 @@ const chainConfigSchema = Joi.object().keys({
   spowerReadyPeriod: Joi.number().required(),
   spowerCalculateBatchSize: Joi.number().required(),
   spowerServiceEffectiveBlock: Joi.number().required(),
+  fileReplayOrderPlaceMode: Joi.string().required(),
   pinServiceAuthHeader: Joi.string().required(),
+  replayAccountSeed: Joi.string().required(),
 });
 
 const databaseConfigSchema = Joi.object().keys({

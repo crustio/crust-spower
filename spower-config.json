@@ -15,7 +15,9 @@
     "spowerReadyPeriod": "10",
     "spowerCalculateBatchSize": "1000",
     "spowerServiceEffectiveBlock": "1",
-    "pinServiceAuthHeader": "Bear xxxxxx"
+    "fileReplayOrderPlaceMode": "Pinner",
+    "pinServiceAuthHeader": "Bear xxxxxx",
+    "replayAccountSeed": "xxxxx xxxxx"
   },
   "telemetry": {
     "endPoint": "https://sm-submit.crust.network"

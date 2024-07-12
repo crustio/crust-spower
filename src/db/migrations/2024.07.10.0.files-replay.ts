@@ -29,6 +29,10 @@ async function createFilesReplayQueueTable(sequelize: QueryInterface) {
           type: DataTypes.STRING,
           allowNull: false,
         },
+        file_size: {
+          type: DataTypes.BIGINT,
+          allowNull: true,
+        },
         status: {
           type: DataTypes.STRING,
           allowNull: false,
