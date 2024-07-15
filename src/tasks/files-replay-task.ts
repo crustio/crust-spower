@@ -18,6 +18,7 @@ import { TaskName } from './polkadot-js-gc-lock';
 const KeyFilesRelayerReplayCountPerHour = 'files-replay-task:replay-count-per-hour';
 const KeyFilesReplayerRequestParallelCount = 'files-replay-task:request-parallel-count';
 let IsFilesReplaying = false;
+let IsUpdateTaskRunning = false;
 let replayAccountKrp: KeyringPair = null;
 const logger = createChildLogger({ moduleId: 'files-replayer' });
 
@@ -237,6 +238,12 @@ async function startUpdateReplayResultTask(
     const batchSize = 500;
     const logger = createChildLogger({ moduleId: 'files-replayer-update-task' });
 
+    // Set the flag first
+    if (IsUpdateTaskRunning) {
+        logger.warn('Files replayer update task is already running, can not run multiple replayer update task at the same time, exit out...');
+        return;
+    }
+    IsUpdateTaskRunning = true;
     logger.info('Start to run update replay result task...');
 
     while(!context.isStopped) {
@@ -414,6 +421,8 @@ async function startUpdateReplayResultTask(
         }
     }
 
+    // Processing done, reset the flag
+    IsUpdateTaskRunning = false;
     logger.info('End to run update replay result task');
 }
 
