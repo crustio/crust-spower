@@ -384,7 +384,7 @@ async function indexChanged(
                     }
 
                     // Sleep a while to release some CPU
-                    await Bluebird.delay(500);
+                    await Bluebird.delay(200);
                   }while(true);
 
                   // Update the last sync block
