@@ -17,8 +17,6 @@ import { TaskName } from './polkadot-js-gc-lock';
 
 const KeyFilesRelayerReplayCountPerHour = 'files-replay-task:replay-count-per-hour';
 const KeyFilesReplayerRequestParallelCount = 'files-replay-task:request-parallel-count';
-let IsFilesReplaying = false;
-let IsUpdateTaskRunning = false;
 let replayAccountKrp: KeyringPair = null;
 const logger = createChildLogger({ moduleId: 'files-replayer' });
 
@@ -32,11 +30,11 @@ async function startReplayFilesTask(
     const fileReplayOrderPlaceMode = config.chain.fileReplayOrderPlaceMode;
     
     // Set the flag first
-    if (IsFilesReplaying) {
+    if (context.isFilesReplaying) {
         logger.warn('Files replayer is already running, can not run multiple replayer at the same time, exit out...');
         return;
     }
-    IsFilesReplaying = true;
+    context.isFilesReplaying = true;
     logger.info('Start to run files replayer...');
 
     // Trigger to run replay result updater
@@ -190,7 +188,7 @@ async function startReplayFilesTask(
     }
 
     // Processing done, reset the flag
-    IsFilesReplaying = false;
+    context.isFilesReplaying = false;
     logger.info('End to run files replayer');
 }
 
@@ -239,11 +237,11 @@ async function startUpdateReplayResultTask(
     const logger = createChildLogger({ moduleId: 'files-replayer-update-task' });
 
     // Set the flag first
-    if (IsUpdateTaskRunning) {
+    if (context.isUpdateTaskRunning) {
         logger.warn('Files replayer update task is already running, can not run multiple replayer update task at the same time, exit out...');
         return;
     }
-    IsUpdateTaskRunning = true;
+    context.isUpdateTaskRunning = true;
     logger.info('Start to run update replay result task...');
 
     while(!context.isStopped) {
@@ -405,7 +403,7 @@ async function startUpdateReplayResultTask(
                 }
             });
             
-            if (replayedRecordsCount > 0 || IsFilesReplaying == true) {
+            if (replayedRecordsCount > 0 || context.isFilesReplaying == true) {
                 // files replayer is still runnning, or there still exist 'replayed' records, keep running this task
                 // Update replay results every 15 minutes
                 logger.info('Wait 15 minutes for next round');
@@ -422,13 +420,13 @@ async function startUpdateReplayResultTask(
     }
 
     // Processing done, reset the flag
-    IsUpdateTaskRunning = false;
+    context.isUpdateTaskRunning = false;
     logger.info('End to run update replay result task');
 }
 
 export function triggerFilesReplayer(context: AppContext): { code: string, msg: string } {
 
-  if (IsFilesReplaying) {
+  if (context.isFilesReplaying) {
     return {
       code: 'ERROR',
       msg: 'Files replayer is already running, can not trigger multiple times'

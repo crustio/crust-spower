@@ -20,6 +20,7 @@ import { TaskName } from './polkadot-js-gc-lock';
 
 export const KeyLastSpowerUpdateBlock = 'spower-calculator-task:last-spower-update-block';
 const KeyUpdatingRecords = 'spower-calculator-task:updating-records';
+const KeySpowerCalculatorEnabled = 'spower-calculator-task:enabled';
 
 interface UpdatingRecords {
   toDeleteCids: string[];
@@ -46,6 +47,14 @@ async function calculateSpower(
     try {
       // Sleep a while
       await Bluebird.delay(1 * 1000);
+
+      // Check whether the spower-calculator-task is enabled
+      const isEnabled = await configOp.readInt(KeySpowerCalculatorEnabled);
+      if (!_.isNil(isEnabled) && isEnabled === 0) {
+        logger.info(`The spower-calculator-task is disabled, wait a while and check later`);
+        await Bluebird.delay(60 * 1000);
+        continue;
+      }
 
       await gcLock.acquireTaskLock(TaskName.SpowerCalculatorTask);
 

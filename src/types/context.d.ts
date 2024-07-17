@@ -10,4 +10,6 @@ export interface AppContext {
   database: Sequelize;
   gcLock: PolkadotJsGCLock;
   isStopped: boolean;
+  isFilesReplaying: boolean;
+  isUpdateTaskRunning: boolean;
 }

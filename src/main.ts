@@ -37,7 +37,9 @@ async function main() {
     database,
     startTime: Dayjs(),
     gcLock: new PolkadotJsGCLock(),
-    isStopped: false
+    isStopped: false,
+    isFilesReplaying: false,
+    isUpdateTaskRunning: false
   };
   const simpleTasks = await loadSimpleTasks(context);
   try {
