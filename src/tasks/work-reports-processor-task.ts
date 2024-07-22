@@ -14,6 +14,8 @@ import Bluebird from 'bluebird';
 import { REPORT_SLOT, SPOWER_UPDATE_START_OFFSET, WORKREPORT_PROCESSOR_OFFSET } from '../utils/consts';
 import { createConfigOps } from '../db/configs';
 import { TaskName } from './polkadot-js-gc-lock';
+import { KeySpowerCalculatorEnabled } from './spower-calculator-task';
+import { ConfigOperator } from '../types/database';
 
 export const KeyWorkReportsLastProcessBlock = 'work-reports-processor:last-process-block';
 /**
@@ -55,7 +57,9 @@ async function processWorkReports(
       // The spower-calculator-task will calculate the spower within the 410th ~ 490th block within the slot
       // Separate the replicas update and spower calculation to avoid race condition and inconsistent data
       const blockInSlot = curBlock % REPORT_SLOT;
-      if ( blockInSlot < WORKREPORT_PROCESSOR_OFFSET || blockInSlot > (SPOWER_UPDATE_START_OFFSET-WORKREPORT_PROCESSOR_OFFSET) )  {
+      let isSpowerCalcTaskEnabled = await checkSpowerCalculatorTaskEnabled(configOp);
+      if (isSpowerCalcTaskEnabled && 
+          (blockInSlot < WORKREPORT_PROCESSOR_OFFSET || blockInSlot > (SPOWER_UPDATE_START_OFFSET-WORKREPORT_PROCESSOR_OFFSET)) )  {
         logger.info(`Not in the work reports process block range, blockInSlot: ${blockInSlot}, keep waiting..`);
 
         let waitTime = 6000;
@@ -100,7 +104,9 @@ async function processWorkReports(
         // Check the latest block and break out if larger than SPOWER_UPDATE_START_OFFSET
         const latestBlock: number = api.latestFinalizedBlock();
         const latestBlockInSlot = latestBlock % REPORT_SLOT;
-        if (latestBlockInSlot>(SPOWER_UPDATE_START_OFFSET-WORKREPORT_PROCESSOR_OFFSET)) {
+        isSpowerCalcTaskEnabled = await checkSpowerCalculatorTaskEnabled(configOp);
+        if (isSpowerCalcTaskEnabled &&
+            (latestBlockInSlot>(SPOWER_UPDATE_START_OFFSET-WORKREPORT_PROCESSOR_OFFSET)) ) {
           logger.info(`Current block in slot: '${latestBlockInSlot}' (block '${latestBlock}') is after spower_update_start_offset  '${SPOWER_UPDATE_START_OFFSET-WORKREPORT_PROCESSOR_OFFSET}', wait for spower update complete...`);
           break;
         }
@@ -196,6 +202,15 @@ function createFileReplicas(filesInfoMap: Map<string, FileToUpdate>, wr: WorkRep
     fileInfo.replicas.push(fileReplica);
   }
           
+}
+
+async function checkSpowerCalculatorTaskEnabled(configOp: ConfigOperator): Promise<boolean> {
+  const isEnabled = await configOp.readInt(KeySpowerCalculatorEnabled);
+  if (!_.isNil(isEnabled) && isEnabled === 0) {
+    return false;
+  }
+
+  return true;
 }
 
 export async function createWorkReportsProcessor(

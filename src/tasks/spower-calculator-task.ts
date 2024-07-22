@@ -20,7 +20,7 @@ import { TaskName } from './polkadot-js-gc-lock';
 
 export const KeyLastSpowerUpdateBlock = 'spower-calculator-task:last-spower-update-block';
 const KeyUpdatingRecords = 'spower-calculator-task:updating-records';
-const KeySpowerCalculatorEnabled = 'spower-calculator-task:enabled';
+export const KeySpowerCalculatorEnabled = 'spower-calculator-task:enabled';
 
 interface UpdatingRecords {
   toDeleteCids: string[];
