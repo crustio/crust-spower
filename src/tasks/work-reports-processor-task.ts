@@ -155,9 +155,6 @@ async function processWorkReports(
         else {
           await workReportsOp.updateStatus(recordIdsProcessed, 'failed');
         }
-
-        // Wait for the next block to do next round, so we make sure at most one market::updateReplicas extrinsic call for one block
-        await api.waitForNextBlock();
       }
     } catch (err) {
       logger.error(`Work report processed failed. Error: ${err}`);
