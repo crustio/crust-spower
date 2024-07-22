@@ -51,7 +51,8 @@ async function calculateSpower(
       // Check whether the spower-calculator-task is enabled
       const isEnabled = await configOp.readInt(KeySpowerCalculatorEnabled);
       if (!_.isNil(isEnabled) && isEnabled === 0) {
-        logger.info(`The spower-calculator-task is disabled, wait a while and check later`);
+        logger.warn(`The spower-calculator-task is disabled, wait a while and check later`);
+        await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
         await Bluebird.delay(60 * 1000);
         continue;
       }

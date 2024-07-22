@@ -3,7 +3,7 @@
     "endPoint": "ws://localhost:9944",
     "placeOrderAccountsNumber": 2,
     "placeOrderFrequency": 1,
-    "placeOrderLimit": 10000,
+    "placeOrderLimit": 300000,
     "groupAccountsNumber": 70,
     "sworkerAccountsNumber": 90
   },
