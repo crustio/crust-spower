@@ -12,5 +12,5 @@ export const MarketFilesV2StorageKey = '0x5ebf094108ead4fefa73f7a3b13cb4a76ed210
 
 export const REPORT_SLOT = 600;
 export const SPOWER_UPDATE_START_OFFSET = 410;
-export const SPOWER_UPDATE_END_OFFSET = 490;
+export const SPOWER_UPDATE_END_OFFSET = 590;
 export const WORKREPORT_PROCESSOR_OFFSET = 10;
