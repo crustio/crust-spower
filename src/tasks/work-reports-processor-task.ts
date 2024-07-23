@@ -99,7 +99,7 @@ async function processWorkReports(
 
       // There maybe many work reports before the curBlock, so we need to loop here
       let round = 0;
-      let batchSize = configBatchSize;
+      let overrideBatchSize = null;
       while(!isStopped()) {
         // Check the latest block and break out if larger than SPOWER_UPDATE_START_OFFSET
         const latestBlock: number = api.latestFinalizedBlock();
@@ -112,6 +112,7 @@ async function processWorkReports(
         }
 
         // Get batch of work reports before the curBlock
+        const batchSize = _.isNil(overrideBatchSize) ? configBatchSize : overrideBatchSize;
         const blocksOfWorkReports = await workReportsOp.getPendingWorkReports(batchSize, curBlock);
         if (blocksOfWorkReports.length === 0) {
           logger.info(`No more work reports to process, break out and wait for the interval`);
@@ -146,9 +147,12 @@ async function processWorkReports(
         /// -------------------------------------------------------
         /// Check whether exceeds the files count limit, if exceeds, use a smaller batch size, minimum batchSize is 1
         if (filesInfoMap.size > workReportsProcesserFilesCountLimit && batchSize > 1) {
-          batchSize = Math.ceil(batchSize / 2);
-          logger.info(`Retrieved files count: ${filesInfoMap.size} exceeds the files count limit: ${workReportsProcesserFilesCountLimit}, reprocess using a smaller batch size: ${batchSize}`);
+          overrideBatchSize =  Math.ceil(batchSize/2);
+          logger.warn(`Retrieved files count: ${filesInfoMap.size} exceeds the files count limit: ${workReportsProcesserFilesCountLimit}, reprocess using a smaller batch size: ${overrideBatchSize}`);
           continue;
+        } else {
+          // Reset the override batch size
+          overrideBatchSize = null;
         }
 
         // ---------------------------------------------------------------

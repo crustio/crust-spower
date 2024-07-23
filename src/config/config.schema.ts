@@ -17,6 +17,7 @@ const chainConfigSchema = Joi.object().keys({
   filesV2IndexChangedSyncInterval: Joi.number().required(),
   spowerReadyPeriod: Joi.number().required(),
   spowerCalculateBatchSize: Joi.number().required(),
+  spowerCalculateMaxSworkerChangedCount: Joi.number().required(),
   spowerServiceEffectiveBlock: Joi.number().required(),
   fileReplayOrderPlaceMode: Joi.string().required(),
   pinServiceAuthHeader: Joi.string().required(),

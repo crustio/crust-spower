@@ -40,8 +40,10 @@ async function calculateSpower(
   const configOp = createConfigOps(database);
   const spowerReadyPeriod = config.chain.spowerReadyPeriod;
   const spowerCalculateBatchSize = config.chain.spowerCalculateBatchSize;
+  const spowerCalculateMaxSworkerChangedCount = config.chain.spowerCalculateMaxSworkerChangedCount;
   let round = 0;
   let lastReportSlot = 0;
+  let overrideSpowerCalculateBatchSize = null;
 
   while (!isStopped()) {
     try {
@@ -139,7 +141,8 @@ async function calculateSpower(
       logger.info(`Round ${round} - Start to calculate spower at block '${curBlock}' (blockInSlot: ${blockInSlot}, reportSlot: ${curBlockSlot})`);
 
       // 0. Get the qualified records to calculate
-      const filesToCalcRecords = await filesV2Op.getNeedSpowerUpdateRecords(spowerCalculateBatchSize, curBlock);
+      const batchSize = _.isNil(overrideSpowerCalculateBatchSize) ? spowerCalculateBatchSize : overrideSpowerCalculateBatchSize;
+      const filesToCalcRecords = await filesV2Op.getNeedSpowerUpdateRecords(batchSize, curBlock);
       if (filesToCalcRecords.length == 0) {
         logger.info(`No more files to calculate spower, wait for new report slot`);
         const waitTime = (REPORT_SLOT - blockInSlot + SPOWER_UPDATE_START_OFFSET) * 6 * 1000;
@@ -282,6 +285,15 @@ async function calculateSpower(
       }
 
       // 4. Update the chain data with sworkerChangedSpowerMap, fileNewSpowerMap, updatedBlocks
+      if (sworkerChangedSpowerMap.size > spowerCalculateMaxSworkerChangedCount && batchSize > 1) {
+        overrideSpowerCalculateBatchSize = Math.ceil(batchSize/2);
+        logger.warn(`This round contains ${sworkerChangedSpowerMap.size} changed sworker, which exceeds limit: ${spowerCalculateMaxSworkerChangedCount}. Re-calculate using smaller batch size: ${overrideSpowerCalculateBatchSize}.`);
+        await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
+        continue;
+      } else {
+        // Reset the override batch size
+        overrideSpowerCalculateBatchSize = null;
+      }
 
       // 4.1 Mark the record is updating and save them to update records, which are used to restore the records 
       //     when on chain update spower is success but client treat as failed (due to like network interuption, or client be killed or crashed)

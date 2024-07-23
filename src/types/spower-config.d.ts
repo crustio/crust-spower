@@ -13,6 +13,7 @@ export interface ChainConfig {
   filesV2IndexChangedSyncInterval: number;
   spowerReadyPeriod: number;
   spowerCalculateBatchSize: number;
+  spowerCalculateMaxSworkerChangedCount: number;
   spowerServiceEffectiveBlock: number;
   fileReplayOrderPlaceMode: string;
   pinServiceAuthHeader: string;
