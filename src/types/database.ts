@@ -225,7 +225,7 @@ export interface FilesV2Operator {
   updateRecords: (records: FilesV2Record[], updateFields: string[], transaction?: Transaction) => Promise<number>;
   upsertRecords: (records: FilesV2Record[], upsertFields: string[]) => Promise<number>;
   getExistingCids: (cids: string[]) => Promise<string[]>;
-  setIsSpowerUpdating: (cids: string[]) => Promise<number>;
+  setIsSpowerUpdating: (cids: string[], isUpdating?: boolean) => Promise<number>;
   clearIsSpowerUpdating: () => Promise<number>;
 };
 

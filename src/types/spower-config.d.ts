@@ -11,6 +11,7 @@ export interface ChainConfig {
   filesV2SyncMaxRounds: number;
   filesV2IndexAllKeyBatchSize: number;
   filesV2IndexChangedSyncInterval: number;
+  spowerCalculateMode: string;
   spowerReadyPeriod: number;
   spowerCalculateBatchSize: number;
   spowerCalculateMaxSworkerChangedCount: number;

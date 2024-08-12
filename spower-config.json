@@ -12,6 +12,7 @@
     "filesV2SyncMaxRounds": "20",
     "filesV2IndexAllKeyBatchSize": "400",
     "filesV2IndexChangedSyncInterval": "10",
+    "spowerCalculateMode": "V2",
     "spowerReadyPeriod": "10",
     "spowerCalculateBatchSize": "1000",
     "spowerCalculateMaxSworkerChangedCount": "500",

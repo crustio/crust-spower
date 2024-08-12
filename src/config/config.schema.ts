@@ -15,6 +15,7 @@ const chainConfigSchema = Joi.object().keys({
   filesV2SyncMaxRounds: Joi.number().required(),
   filesV2IndexAllKeyBatchSize: Joi.number().required(),
   filesV2IndexChangedSyncInterval: Joi.number().required(),
+  spowerCalculateMode: Joi.string().required(),
   spowerReadyPeriod: Joi.number().required(),
   spowerCalculateBatchSize: Joi.number().required(),
   spowerCalculateMaxSworkerChangedCount: Joi.number().required(),

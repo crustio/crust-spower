@@ -19,6 +19,7 @@ import { Sequelize } from 'sequelize';
 import { TaskName } from './polkadot-js-gc-lock';
 
 export const KeyLastSpowerUpdateBlock = 'spower-calculator-task:last-spower-update-block';
+export const KeyLastSpowerCalculateBlock = 'spower-calculator-task:last-spower-calculate-block';
 const KeyUpdatingRecords = 'spower-calculator-task:updating-records';
 export const KeySpowerCalculatorEnabled = 'spower-calculator-task:enabled';
 
@@ -38,12 +39,22 @@ async function calculateSpower(
   const { api, database, config, gcLock } = context;
   const filesV2Op = createFilesV2Operator(database);
   const configOp = createConfigOps(database);
+  const spowerCalculateMode = config.chain.spowerCalculateMode;
   const spowerReadyPeriod = config.chain.spowerReadyPeriod;
   const spowerCalculateBatchSize = config.chain.spowerCalculateBatchSize;
   const spowerCalculateMaxSworkerChangedCount = config.chain.spowerCalculateMaxSworkerChangedCount;
   let round = 0;
   let lastReportSlot = 0;
   let overrideSpowerCalculateBatchSize = null;
+
+  // Update the spower ready period on chain under V2 mode
+  if (spowerCalculateMode == 'V2') {
+    await api.ensureConnection();
+    const currentReadyPeriodOnChain = await api.getSpowerReadyPeriod();
+    if (currentReadyPeriodOnChain != spowerReadyPeriod) {
+      await api.setSpowerReadyPeriod(spowerReadyPeriod);
+    }
+  }
 
   while (!isStopped()) {
     try {
@@ -88,7 +99,7 @@ async function calculateSpower(
 
       // Make sure the files-v2-indexer has reached to the latest block, to avoid race condition to update file_info
       // between files-v2-indexer and spower-calculator
-      // This logic has the assumption that work-reports-processor do NOT update replicas within the 400th and 499th block of this slot
+      // This logic has the assumption that work-reports-processor do NOT update replicas within the 400th and 590th block of this slot
       const lastFilesV2IndexBlock = await configOp.readInt(KeyIndexChangedLastIndexBlock);
       const lastFilesV2SyncSlot = convertBlockNumberToReportSlot(lastFilesV2IndexBlock);
       const curBlockSlot = convertBlockNumberToReportSlot(curBlock);
@@ -142,15 +153,85 @@ async function calculateSpower(
 
       // 0. Get the qualified records to calculate
       const batchSize = _.isNil(overrideSpowerCalculateBatchSize) ? spowerCalculateBatchSize : overrideSpowerCalculateBatchSize;
-      const filesToCalcRecords = await filesV2Op.getNeedSpowerUpdateRecords(batchSize, curBlock);
-      if (filesToCalcRecords.length == 0) {
+      const needSpowerUpdateRecords = await filesV2Op.getNeedSpowerUpdateRecords(batchSize, curBlock);
+      if (needSpowerUpdateRecords.length == 0) {
         logger.info(`No more files to calculate spower, wait for new report slot`);
         const waitTime = (REPORT_SLOT - blockInSlot + SPOWER_UPDATE_START_OFFSET) * 6 * 1000;
         await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
         await Bluebird.delay(waitTime);
         continue;
       }
-      logger.info(`Calculate spower for ${filesToCalcRecords.length} files`);
+      logger.info(`Calculate spower for ${needSpowerUpdateRecords.length} files`);
+
+      /// The reason why we introduce V2 calculate mode is because the V1 mode may create huge swork::update_spower extrinsic request,
+      /// which contains over 2000+ sworker changed spower items and 1000+ changed file replicas items.
+      /// This huge extrinsic will make some nodes to stuck and not able to produce/sync blocks (A bug for old version Substrate framework).
+      /// Per experiment, less than 20 changed files and 1000 changed sworkers will be the limit for chain to run smoothly, but this is 
+      /// very slow to update spower for massive files.
+      let filesToCalcRecords = [];
+      if (spowerCalculateMode == 'V2') {
+        /// Under V2 spower calculate mode, we invoke the market::calculate_spower extrinsic 
+        /// to calculate and update the spower on chain directly for non-closed files.
+        const cidsToCalculateSpower = [];
+        for (const record of needSpowerUpdateRecords) {
+          if (record.is_closed) {
+            // For closed file, we still use local data to calculate, because closed file has already been removed from chain
+            filesToCalcRecords.push(record);
+          } else {
+            cidsToCalculateSpower.push(record.cid);
+          }
+        }
+
+        if (cidsToCalculateSpower.length > 0) {
+          // Set the isSpowerUpdating flag to true first
+          await filesV2Op.setIsSpowerUpdating(cidsToCalculateSpower);
+          // Call the market::calculate_spowers extrinsic
+          logger.info(`Call market::calculate_spowers with ${cidsToCalculateSpower} files`);
+          const result = await api.calcuateSpowers(cidsToCalculateSpower);
+          
+          if (result == true) {
+            const newLastSpowerCalculateBlock = await api.getLastSpowerCalculateBlock();
+            logger.info(`Call market::calculate_spowers success, newLastSpowerCalculateBlock: ${newLastSpowerCalculateBlock}`);
+
+            // Construct the records to update
+            const toUpdateRecords = [];
+            for (const cid of cidsToCalculateSpower) {
+              toUpdateRecords.push({
+                cid: cid,
+                last_spower_update_block: newLastSpowerCalculateBlock,
+                last_spower_update_time: new Date(),
+                next_spower_update_block: null,
+                need_sync: true, // Mark the need_sync flag to true so the latest on chain data will be synced to local
+                is_spower_updating: false,
+              });
+            }
+
+            // Update all database records in a single transaction
+            await database.transaction(async (transaction) => {
+              logger.info(`Update ${toUpdateRecords.length} records in files-v2 table`);
+              const updateFields = ['last_spower_update_block', 'last_spower_update_time', 'next_spower_update_block', 'need_sync', 'is_spower_updating'];
+              await filesV2Op.updateRecords(toUpdateRecords, updateFields, transaction);
+
+              // Update the KeyLastSpowerUpdateBlock config
+              await configOp.saveInt(KeyLastSpowerCalculateBlock, newLastSpowerCalculateBlock, transaction);
+            });
+          } else {
+            logger.error('Call market::calculate_spowers failed, wait a while and try later');
+            // Clear the updating flag
+            await filesV2Op.setIsSpowerUpdating(cidsToCalculateSpower, false);
+            // Althrough the api returns failed, the calculate_spowers extrinsic may actually succeed, wait a while and make the block finalized
+            await Bluebird.delay(6000);
+          }
+        }
+      } else {
+        /// Under V1 spower calculate mode, we calculate all the spower locally and call the swork::update_spower extrinsic to 
+        /// update the resulted spower value on chain
+        filesToCalcRecords = needSpowerUpdateRecords;
+      }
+
+      if (filesToCalcRecords.length == 0) {
+        continue;
+      }
 
       // 1. Construct the filesInfoV2Map structure
       logger.debug(`1. Construct the filesInfoV2Map structure`);

@@ -152,11 +152,12 @@ export function createFilesV2Operator(db: Sequelize): FilesV2Operator {
   };
 
   const setIsSpowerUpdating = async (
-    cids: string[]
+    cids: string[],
+    isUpdating = true
     ): Promise<number> => {
 
     const [affectedRows] = await FilesV2Record.update({
-      is_spower_updating: true
+      is_spower_updating: isUpdating
     }, {
       where: { cid: cids },
     });

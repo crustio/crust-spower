@@ -638,6 +638,80 @@ export default class CrustApi {
     }
   }
 
+  async getSpowerReadyPeriod(): Promise<number> {
+    await this.withApiReady();
+    
+    const readyPeriod = await this.api.query.market.spowerReadyPeriod();
+    if (_.isNil(readyPeriod) || readyPeriod.isEmpty) {
+      return 0;
+    }
+    return parseInt(readyPeriod as any);   
+  }
+
+  async setSpowerReadyPeriod(spowerReadyPeriod: number): Promise<boolean> {
+    const startTime = performance.now();
+    await this.withApiReady();
+    
+    try {
+      const tx = this.api.tx.market.setSpowerReadyPeriod(spowerReadyPeriod);
+
+      let txRes = queryToObj(await this.handleTxWithLock('market', async () => this.sendTx(tx)));
+      txRes = txRes ? txRes : {status:'failed', message: 'Null txRes'};
+      if (txRes.status == 'success') {
+        logger.info(`Update spower ready period to chain successfully`);
+        return true;
+      }
+      else {
+        logger.error(`Failed to update spower ready period to chain: ${txRes.message}`);
+        return false;
+      }
+    } catch (err) {
+      logger.error(`💥 Error to update spower ready period to chain: ${err}`);
+    } finally {
+      const endTime = performance.now();
+      logger.debug(`End to update spower ready period to chain. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+    }
+
+    return false;
+  }
+
+  async calcuateSpowers(cids: string[]): Promise<boolean> {
+    const startTime = performance.now();
+    await this.withApiReady();
+    
+    try {
+      const tx = this.api.tx.market.calculateSpowers(cids);
+
+      let txRes = queryToObj(await this.handleTxWithLock('market', async () => this.sendTx(tx)));
+      txRes = txRes ? txRes : {status:'failed', message: 'Null txRes'};
+      if (txRes.status == 'success') {
+        logger.info(`Call market::calculate_spowers extrinsic successfully`);
+        return true;
+      }
+      else {
+        logger.error(`Failed to call market::calculate_spowers extrinsic: ${txRes.message}`);
+        return false;
+      }
+    } catch (err) {
+      logger.error(`💥 Error to call market::calculate_spowers extrinsic: ${err}`);
+    } finally {
+      const endTime = performance.now();
+      logger.debug(`End to call market::calculate_spowers extrinsic. Time cost: ${(endTime - startTime).toFixed(2)}ms`);
+    }
+
+    return false;
+  }
+
+  async getLastSpowerCalculateBlock(): Promise<number> {
+    await this.withApiReady();
+    
+    const block = await this.api.query.market.lastSpowerCalculateBlock();
+    if (_.isNil(block) || block.isEmpty) {
+      return 0;
+    }
+    return parseInt(block as any);   
+  }
+
   private async handleTxWithoutLock(handler: Function) {
     return await timeout(
       new Promise((resolve, reject) => {
