@@ -473,9 +473,10 @@ export default class CrustApi {
       // Retrieve the FilesInfoV2 data from chain in batch
       const batchSize = this.config.chain.filesV2SyncBatchSize;
       logger.debug(`Total files count need to query: ${storageKeys.length}, query in batch size: ${batchSize}`);
+      let round=0;
       for (let i = 0; i < storageKeys.length; i += batchSize) {
         const storageKeysInBatch = storageKeys.slice(i, i + batchSize);
-        logger.debug(`Batch ${i+1}: ${storageKeysInBatch.length} files`);
+        logger.debug(`Batch ${round++}: ${storageKeysInBatch.length} files`);
 
         const fileInfoV2MapFromChain = await this.api.rpc.state.queryStorageAt(storageKeysInBatch, blockHash) as any;
 

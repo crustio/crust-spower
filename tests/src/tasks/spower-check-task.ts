@@ -164,7 +164,7 @@ export async function runSpowerCheckTask(
           calculatedTotalSpower = !_.isNil(calculatedTotalSpower) ? calculatedTotalSpower : BigInt(0);
           logger.info(`   calculated - ${calculatedTotalSpower}, work report total spower - ${workReport.spower}`);
           if (calculatedTotalSpower != workReport.spower) {
-            logger.error(`   💥💥💥 Total spower not match: calculated - ${calculatedTotalSpower}, work report total spower - ${workReport.spower}`);
+            logger.error(`   💥💥💥 Total spower not match: calculated - ${calculatedTotalSpower}, work report total spower - ${workReport.spower}, anchor - ${anchor}, block - ${lastSpowerUpdateBlock}`);
           }
         }
 
