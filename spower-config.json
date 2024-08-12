@@ -16,6 +16,7 @@
     "spowerCalculateBatchSize": "1000",
     "spowerCalculateMaxSworkerChangedCount": "500",
     "spowerServiceEffectiveBlock": "1",
+    "spowerRunInAllBlockCalcInterval": "3",
     "fileReplayOrderPlaceMode": "Pinner",
     "pinServiceAuthHeader": "Bear xxxxxx",
     "replayAccountSeed": "xxxxx xxxxx"

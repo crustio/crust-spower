@@ -15,6 +15,7 @@ export interface ChainConfig {
   spowerCalculateBatchSize: number;
   spowerCalculateMaxSworkerChangedCount: number;
   spowerServiceEffectiveBlock: number;
+  spowerRunInAllBlockCalcInterval: number;
   fileReplayOrderPlaceMode: string;
   pinServiceAuthHeader: string;
   replayAccountSeed: string;

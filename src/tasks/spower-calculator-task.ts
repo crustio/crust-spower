@@ -21,6 +21,8 @@ import { TaskName } from './polkadot-js-gc-lock';
 export const KeyLastSpowerUpdateBlock = 'spower-calculator-task:last-spower-update-block';
 const KeyUpdatingRecords = 'spower-calculator-task:updating-records';
 export const KeySpowerCalculatorEnabled = 'spower-calculator-task:enabled';
+const KeySpowerRunInAllBlocks = 'spower-calculator-task:run-in-all-blocks';
+const KeyLastSpowerProcessBlock = 'spower-calculator-task:last-spower-process-block';
 
 interface UpdatingRecords {
   toDeleteCids: string[];
@@ -41,7 +43,10 @@ async function calculateSpower(
   const spowerReadyPeriod = config.chain.spowerReadyPeriod;
   const spowerCalculateBatchSize = config.chain.spowerCalculateBatchSize;
   const spowerCalculateMaxSworkerChangedCount = config.chain.spowerCalculateMaxSworkerChangedCount;
+  const spowerRunInAllBlockCalcInterval = config.chain.spowerRunInAllBlockCalcInterval;
   let round = 0;
+  let actualUpdateRoundInSlot = 0;
+  let totalUpdateFilesCountInSlot = 0;
   let lastReportSlot = 0;
   let overrideSpowerCalculateBatchSize = null;
 
@@ -64,43 +69,8 @@ async function calculateSpower(
       // Ensure connection and get the lastest finalized block
       await api.ensureConnection();
       const curBlock: number = api.latestFinalizedBlock();
-
-      // Only run the spower calculate within the 410th and 490th block of this slot
-      // The reason for end block 490 is to give the final round some time to calculate and update the spower on chain
-      // The pallet_swork would do the workload consolidation starting from 500th block in the lost
-      const blockInSlot = curBlock % REPORT_SLOT;
-      if (blockInSlot < SPOWER_UPDATE_START_OFFSET || blockInSlot > SPOWER_UPDATE_END_OFFSET) {
-        logger.info(`Not in the spower calculate block range, blockInSlot: ${blockInSlot}, keep waiting..`);
-
-        let waitTime = 6000;
-        if (blockInSlot < SPOWER_UPDATE_START_OFFSET) {
-          waitTime = (SPOWER_UPDATE_START_OFFSET - blockInSlot) * 6 * 1000;
-        } else {
-          waitTime = (REPORT_SLOT - blockInSlot + SPOWER_UPDATE_START_OFFSET) * 6 * 1000;
-          // Reset the round counter
-          round = 0;
-        }
-
-        await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
-        await Bluebird.delay(waitTime);
-        continue;
-      }
-
-      // Make sure the files-v2-indexer has reached to the latest block, to avoid race condition to update file_info
-      // between files-v2-indexer and spower-calculator
-      // This logic has the assumption that work-reports-processor do NOT update replicas within the 400th and 499th block of this slot
-      const lastFilesV2IndexBlock = await configOp.readInt(KeyIndexChangedLastIndexBlock);
-      const lastFilesV2SyncSlot = convertBlockNumberToReportSlot(lastFilesV2IndexBlock);
       const curBlockSlot = convertBlockNumberToReportSlot(curBlock);
-      if (_.isNil(lastFilesV2IndexBlock)
-        || lastFilesV2IndexBlock == 0
-        || lastFilesV2SyncSlot < curBlockSlot
-        || (lastFilesV2IndexBlock % REPORT_SLOT) < SPOWER_UPDATE_START_OFFSET) {
-        logger.info(`files-v2-indexer is still catching up the progress, wait a while`);
-        await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
-        await Bluebird.delay(6 * 1000);
-        continue;
-      }
+      const blockInSlot = curBlock % REPORT_SLOT;
 
       // Get the last spower update block from config
       let lastSpowerUpdateBlock = await configOp.readInt(KeyLastSpowerUpdateBlock);
@@ -110,6 +80,65 @@ async function calculateSpower(
 
         configOp.saveInt(KeyLastSpowerUpdateBlock, lastSpowerUpdateBlock);
       }
+      // Get the last spower process block from config
+      let lastSpowerProcessBlock = await configOp.readInt(KeyLastSpowerProcessBlock);
+      if (_.isNil(lastSpowerUpdateBlock)) {
+        logger.info(`No '${KeyLastSpowerProcessBlock}' config found in DB, set to current block ${curBlock}`);
+        lastSpowerProcessBlock = curBlock;
+
+        configOp.saveInt(KeyLastSpowerProcessBlock, lastSpowerProcessBlock);
+      }
+
+      const runInAllBlocks = await configOp.readInt(KeySpowerRunInAllBlocks);
+      if (runInAllBlocks == 1) {
+        // Skip range check, process with interval
+        const interval = curBlock - lastSpowerProcessBlock;
+        if ( interval < spowerRunInAllBlockCalcInterval) {
+          logger.info(`Not reach interval yet, wait for ${spowerRunInAllBlockCalcInterval-interval} blocks`);
+          await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
+          await Bluebird.delay((spowerRunInAllBlockCalcInterval-interval) * 6 * 1000);
+          continue;
+        }
+      } else {
+        // Only run the spower calculate within the 410th and 490th block of this slot
+        // The reason for end block 490 is to give the final round some time to calculate and update the spower on chain
+        // The pallet_swork would do the workload consolidation starting from 500th block in the lost
+        
+        if (blockInSlot < SPOWER_UPDATE_START_OFFSET || blockInSlot > SPOWER_UPDATE_END_OFFSET) {
+          logger.info(`Not in the spower calculate block range, blockInSlot: ${blockInSlot}, keep waiting..`);
+
+          let waitTime = 6000;
+          if (blockInSlot < SPOWER_UPDATE_START_OFFSET) {
+            waitTime = (SPOWER_UPDATE_START_OFFSET - blockInSlot) * 6 * 1000;
+          } else {
+            waitTime = (REPORT_SLOT - blockInSlot + SPOWER_UPDATE_START_OFFSET) * 6 * 1000;
+            // Reset the round counter
+            round = 0;
+          }
+
+          await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
+          await Bluebird.delay(waitTime);
+          continue;
+        }
+
+        // Make sure the files-v2-indexer has reached to the latest block, to avoid race condition to update file_info
+        // between files-v2-indexer and spower-calculator
+        // This logic has the assumption that work-reports-processor do NOT update replicas within the 400th and 499th block of this slot
+        const lastFilesV2IndexBlock = await configOp.readInt(KeyIndexChangedLastIndexBlock);
+        const lastFilesV2SyncSlot = convertBlockNumberToReportSlot(lastFilesV2IndexBlock);
+        
+        if (_.isNil(lastFilesV2IndexBlock)
+          || lastFilesV2IndexBlock == 0
+          || lastFilesV2SyncSlot < curBlockSlot
+          || (lastFilesV2IndexBlock % REPORT_SLOT) < SPOWER_UPDATE_START_OFFSET) {
+          logger.info(`files-v2-indexer is still catching up the progress, wait a while`);
+          await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
+          await Bluebird.delay(6 * 1000);
+          continue;
+        }
+      }
+
+      
 
       // Get the last spower update block from chain, and check it with the one in config DB
       // There may be case that on chain update success, but client doesn't receive the result(due to 
@@ -134,8 +163,12 @@ async function calculateSpower(
 
       // Reset the round counter for new report slot
       if (lastReportSlot < curBlockSlot) {
+        logger.info(`Last report slot spower update statistics - report slot: ${lastReportSlot}, rounds: ${actualUpdateRoundInSlot}, total files: ${totalUpdateFilesCountInSlot}`);
+
         lastReportSlot = curBlockSlot;
         round = 0;
+        actualUpdateRoundInSlot = 0;
+        totalUpdateFilesCountInSlot = 0;
       }
       round++;
       logger.info(`Round ${round} - Start to calculate spower at block '${curBlock}' (blockInSlot: ${blockInSlot}, reportSlot: ${curBlockSlot})`);
@@ -144,11 +177,18 @@ async function calculateSpower(
       const batchSize = _.isNil(overrideSpowerCalculateBatchSize) ? spowerCalculateBatchSize : overrideSpowerCalculateBatchSize;
       const filesToCalcRecords = await filesV2Op.getNeedSpowerUpdateRecords(batchSize, curBlock);
       if (filesToCalcRecords.length == 0) {
-        logger.info(`No more files to calculate spower, wait for new report slot`);
-        const waitTime = (REPORT_SLOT - blockInSlot + SPOWER_UPDATE_START_OFFSET) * 6 * 1000;
-        await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
-        await Bluebird.delay(waitTime);
-        continue;
+        if (runInAllBlocks == 1) {
+          logger.info(`No more files to calculate spower, wait for next interval`);
+          await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
+          await Bluebird.delay(spowerRunInAllBlockCalcInterval * 6 * 1000);
+          continue;
+        } else {
+          logger.info(`No more files to calculate spower, wait for new report slot`);
+          const waitTime = (REPORT_SLOT - blockInSlot + SPOWER_UPDATE_START_OFFSET) * 6 * 1000;
+          await gcLock.releaseTaskLock(TaskName.SpowerCalculatorTask);
+          await Bluebird.delay(waitTime);
+          continue;
+        }
       }
       logger.info(`Calculate spower for ${filesToCalcRecords.length} files`);
 
@@ -302,8 +342,8 @@ async function calculateSpower(
         toDeleteCids: toDeleteCids,
         toUpdateRecords: toUpdateRecords
       }
-      await configOp.saveJson(KeyUpdatingRecords, updatingRecords);
       await filesV2Op.setIsSpowerUpdating(allCids);
+      await configOp.saveJson(KeyUpdatingRecords, updatingRecords);
 
       // 4.2 Perform the update
       logger.info(`Call swork.update_spower: changed sworkers count - ${sworkerChangedSpowerMap.size}, changed files count - ${filesChangedMap.size}`);
@@ -317,11 +357,18 @@ async function calculateSpower(
 
         // 5.2 Update multiple DB records in single transaction
         await updateDB(toDeleteCids, toUpdateRecords, newLastSpowerUpdateBlock, database, logger, filesV2Op, configOp);
+
+        // Update the statistics
+        actualUpdateRoundInSlot++;
+        totalUpdateFilesCountInSlot += filesChangedMap.size;
       } else {
         logger.error('Call swork.update_spower failed, wait a while and try later');
         // Althrough the api returns failed, the update_spower extrinsic may actually succeed, wait a while and make the block finalized
         await Bluebird.delay(6000);
       }
+
+      // Update the last process block
+      configOp.saveInt(KeyLastSpowerProcessBlock, curBlock);
     } catch (err) {
       logger.error(`💥 Error to calculate spower: ${err}`);
     } finally {
