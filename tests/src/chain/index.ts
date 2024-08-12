@@ -393,6 +393,16 @@ export default class CrustApi {
     return parseInt(block as any);   
   }
 
+  async getLastSpowerCalculateBlock(): Promise<number> {
+    await this.withApiReady();
+    
+    const block = await this.api.query.market.lastSpowerCalculateBlock();
+    if (_.isNil(block) || block.isEmpty) {
+      return 0;
+    }
+    return parseInt(block as any);   
+  }
+  
   async getLastProcessedBlockWorkReports(): Promise<number> {
     await this.withApiReady();
     

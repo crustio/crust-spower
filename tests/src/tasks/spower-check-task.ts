@@ -40,15 +40,15 @@ export async function runSpowerCheckTask(
         // }
 
         // Get the last spower update block from chain
-        const lastSpowerUpdateBlock = await api.getLastSpowerUpdateBlock();
+        const lastSpowerUpdateBlock = await api.getLastSpowerCalculateBlock();
         if (_.isNil(lastSpowerUpdateBlock) || lastSpowerUpdateBlock === 0 ) {
           const waitTime = (REPORT_SLOT - blockInSlot + SPOWER_UPDATE_END_OFFSET) * 6000;
-          logger.warn(`swork.LastSpowerUpdateBlock is not set on chain yet, crust-spower may not run yet, wait ${waitTime/1000} s for next slot to check again`);
+          logger.warn(`market.LastSpowerUpdateBlock is not set on chain yet, crust-spower may not run yet, wait ${waitTime/1000} s for next slot to check again`);
           await sleep(waitTime);
           continue;
         }
         if (lastCheckedBlock == lastSpowerUpdateBlock) {
-          logger.info(`Block '${lastCheckedBlock}' have already been checked, wait a while to check whether there're new swork.lastSpowerUpdateBlock on chain`);
+          logger.info(`Block '${lastCheckedBlock}' have already been checked, wait a while to check whether there're new market.lastSpowerUpdateBlock on chain`);
           await sleep(12000);
           continue;
         }
