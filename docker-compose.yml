@@ -5,6 +5,7 @@ services:
     image: mysql:latest
     container_name: mysql
     restart: unless-stopped
+    command: --binlog-expire-logs-seconds=25920
     environment:
       MYSQL_ROOT_PASSWORD: 1234567
     volumes:
