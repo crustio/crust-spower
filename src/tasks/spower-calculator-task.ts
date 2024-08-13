@@ -186,7 +186,7 @@ async function calculateSpower(
           // Set the isSpowerUpdating flag to true first
           await filesV2Op.setIsSpowerUpdating(cidsToCalculateSpower);
           // Call the market::calculate_spowers extrinsic
-          logger.info(`Call market::calculate_spowers with ${cidsToCalculateSpower} files`);
+          logger.info(`Call market::calculate_spowers with ${cidsToCalculateSpower.length} files`);
           const result = await api.calcuateSpowers(cidsToCalculateSpower);
           
           if (result == true) {

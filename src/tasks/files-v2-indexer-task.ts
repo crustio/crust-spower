@@ -427,14 +427,10 @@ async function syncFilesV2Data(cids: string[], atBlock: number, curBlock: number
                 if (createdAt < minimumCreateAtBlock) {
                   minimumCreateAtBlock = createdAt;
                 } 
-              } else {
-                minimumCreateAtBlock = 0;
               }
             }
 
-            if (minimumCreateAtBlock == 0) {
-              nextSpowerUpdateBlock = curBlock;
-            } else {
+            if (minimumCreateAtBlock !== Number.MAX_VALUE) {
               nextSpowerUpdateBlock = minimumCreateAtBlock + spowerReadyPeriod as number;
             }
           }
