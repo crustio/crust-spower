@@ -5,7 +5,7 @@ import { FilesV2Record, WorkReportsToProcessRecord } from '../types/database';
 import { createConfigOps } from '../db/configs';
 import { KeyWorkReportsLastProcessBlock } from '../tasks/work-reports-processor-task';
 import { KeyIndexChangedLastIndexBlock, KeyIndexChangedLastSyncBlock, triggerManualFilesIndexer } from '../tasks/files-v2-indexer-task';
-import { KeyLastSpowerUpdateBlock } from '../tasks/spower-calculator-task';
+import { KeyLastSpowerCalculateBlock, KeyLastSpowerUpdateBlock } from '../tasks/spower-calculator-task';
 import { KeyLastIndexBlockWrs } from '../tasks/work-reports-indexer-task';
 import { Op } from 'sequelize';
 import { convertBlockNumberToReportSlot } from '../utils';
@@ -39,9 +39,10 @@ export async function stats(_req: Request, res: Response, context: AppContext): 
     const lastProcessedBlockOfWorkReports = await configOp.readInt(KeyWorkReportsLastProcessBlock);
     
     // Get statistics of files-v2 table
-    const totalFilesV2Counts = await FilesV2Record.count();
+    //const totalFilesV2Counts = await FilesV2Record.count();
     const lastIndexBlockOfFilesV2 = await configOp.readInt(KeyIndexChangedLastIndexBlock);
     const lastSyncBlock = await configOp.readInt(KeyIndexChangedLastSyncBlock);
+    const lastSpowerCalculateBlock = await configOp.readInt(KeyLastSpowerCalculateBlock);
     const lastSpowerUpdateBlock = await configOp.readInt(KeyLastSpowerUpdateBlock);
     const needSyncCount = await FilesV2Record.count({
       where: {
@@ -95,10 +96,11 @@ export async function stats(_req: Request, res: Response, context: AppContext): 
             lastProcessedBlock: lastProcessedBlockOfWorkReports
           },
           filesV2: {
-            totalCount: totalFilesV2Counts,
+            //totalCount: totalFilesV2Counts,
             needSyncCount,
             lastIndexBlock: lastIndexBlockOfFilesV2,
             lastSyncBlock,
+            lastSpowerCalculateBlock,
             lastSpowerUpdateBlock,
             totalNeedSpowerUpdateCount,
             currentRSNeedSpowerUpdateCount,
