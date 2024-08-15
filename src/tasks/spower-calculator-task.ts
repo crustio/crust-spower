@@ -388,20 +388,26 @@ async function calculateSpower(
 
       // 4.2 Perform the update
       logger.info(`Call swork.update_spower: changed sworkers count - ${sworkerChangedSpowerMap.size}, changed files count - ${filesChangedMap.size}`);
-      const result = await api.updateSpower(sworkerChangedSpowerMap, filesChangedMap);
+      if (sworkerChangedSpowerMap.size > 0 || filesChangedMap.size > 0) {
+        const result = await api.updateSpower(sworkerChangedSpowerMap, filesChangedMap);
 
-      // 5. Update db status
-      if (result === true) {
-        // 5.1 Get last spower update block from chain
-        const newLastSpowerUpdateBlock = await api.getLastSpowerUpdateBlock();
-        logger.info(`Call swork.update_spower success, newLastSpowerUpdateBlock: ${newLastSpowerUpdateBlock}`);
+        // 5. Update db status
+        if (result === true) {
+          // 5.1 Get last spower update block from chain
+          const newLastSpowerUpdateBlock = await api.getLastSpowerUpdateBlock();
+          logger.info(`Call swork.update_spower success, newLastSpowerUpdateBlock: ${newLastSpowerUpdateBlock}`);
 
-        // 5.2 Update multiple DB records in single transaction
-        await updateDB(toDeleteCids, toUpdateRecords, newLastSpowerUpdateBlock, database, logger, filesV2Op, configOp);
+          // 5.2 Update multiple DB records in single transaction
+          await updateDB(toDeleteCids, toUpdateRecords, newLastSpowerUpdateBlock, database, logger, filesV2Op, configOp);
+        } else {
+          logger.error('Call swork.update_spower failed, wait a while and try later');
+          // Althrough the api returns failed, the update_spower extrinsic may actually succeed, wait a while and make the block finalized
+          await Bluebird.delay(6000);
+        }
       } else {
-        logger.error('Call swork.update_spower failed, wait a while and try later');
-        // Althrough the api returns failed, the update_spower extrinsic may actually succeed, wait a while and make the block finalized
-        await Bluebird.delay(6000);
+        // No data to update, skip the api.updateSpower call, just update the DB status
+        const newLastSpowerUpdateBlock = await api.getLastSpowerUpdateBlock();
+        await updateDB(toDeleteCids, toUpdateRecords, newLastSpowerUpdateBlock, database, logger, filesV2Op, configOp);
       }
     } catch (err) {
       logger.error(`💥 Error to calculate spower: ${err}`);
